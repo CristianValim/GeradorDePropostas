@@ -1,11 +1,11 @@
 
 /* ============================================================
    CARTRACK — IMPORTAÇÃO DOCUMENTAL LOCAL
-   Etapa 1:
+
    - TXT: leitura direta
    - DOCX: extração através do JSZip
-   - PDF: leitura através de PDF.js (opcional)
-   - Imagens: OCR através de Tesseract.js (opcional)
+   - PDF: PDF.js (pdf.mjs + pdf.worker.mjs)
+   - Imagens: OCR através de Tesseract.js
 
    Os documentos são processados localmente.
    Não são enviados para serviços externos.
@@ -21,6 +21,9 @@
 
     let selectedFile = null;
     let extractedDocument = null;
+
+    // Cache da biblioteca PDF.js.
+    let pdfjsPromise = null;
 
     /* ------------------------------------------------------------
        ESTADO E MENSAGENS
@@ -40,6 +43,49 @@
         const index = name.lastIndexOf(".");
 
         return index >= 0 ? name.slice(index + 1) : "";
+    }
+
+    /* ------------------------------------------------------------
+       CARREGAR PDF.JS — ES MODULE
+
+       Utiliza:
+       lib/pdf.mjs
+       lib/pdf.worker.mjs
+
+       A biblioteca é carregada apenas uma vez.
+       ------------------------------------------------------------ */
+
+    async function loadPdfJs() {
+        if (!pdfjsPromise) {
+            pdfjsPromise = import(
+                chrome.runtime.getURL("lib/pdf.mjs")
+            ).then(pdfjs => {
+
+                if (!pdfjs?.getDocument) {
+                    throw new Error(
+                        "O ficheiro pdf.mjs não disponibiliza getDocument."
+                    );
+                }
+
+                if (!pdfjs.GlobalWorkerOptions) {
+                    throw new Error(
+                        "Não foi possível configurar o PDF.js."
+                    );
+                }
+
+                pdfjs.GlobalWorkerOptions.workerSrc =
+                    chrome.runtime.getURL("lib/pdf.worker.mjs");
+
+                return pdfjs;
+
+            }).catch(error => {
+                // Permite tentar novamente caso o carregamento falhe.
+                pdfjsPromise = null;
+                throw error;
+            });
+        }
+
+        return pdfjsPromise;
     }
 
     /* ------------------------------------------------------------
@@ -64,7 +110,7 @@
 
     /* ------------------------------------------------------------
        EXTRAÇÃO DOCX
-       Utiliza a biblioteca JSZip já presente na extensão.
+       Utiliza a biblioteca JSZip.
        ------------------------------------------------------------ */
 
     async function extractDocx(file) {
@@ -126,31 +172,26 @@
 
     /* ------------------------------------------------------------
        EXTRAÇÃO PDF
-       Requer PDF.js instalado localmente.
+       Utiliza PDF.js através de módulos ES.
        ------------------------------------------------------------ */
 
     async function extractPdf(file) {
-        const pdfjs = root.pdfjsLib || root.PDFJS;
 
-        if (!pdfjs?.getDocument) {
-            throw new Error(
-                "PDF.js não está instalado. " +
-                "Adiciona lib/pdf.min.js e lib/pdf.worker.min.js."
-            );
-        }
+        setStatus("A carregar a biblioteca PDF.js…");
 
-        if (pdfjs.GlobalWorkerOptions) {
-            pdfjs.GlobalWorkerOptions.workerSrc =
-                chrome.runtime.getURL("lib/pdf.worker.min.js");
-        }
+        const pdfjs = await loadPdfJs();
 
         const bytes = new Uint8Array(
             await file.arrayBuffer()
         );
 
-        const pdf = await pdfjs.getDocument({
+        setStatus("A abrir o documento PDF…");
+
+        const loadingTask = pdfjs.getDocument({
             data: bytes
-        }).promise;
+        });
+
+        const pdf = await loadingTask.promise;
 
         const total = Math.min(
             pdf.numPages,
@@ -159,42 +200,52 @@
 
         const pages = [];
 
-        for (
-            let pageNumber = 1;
-            pageNumber <= total;
-            pageNumber += 1
-        ) {
-            setStatus(
-                `A extrair texto do PDF — página ${pageNumber} de ${total}…`
-            );
+        try {
+            for (
+                let pageNumber = 1;
+                pageNumber <= total;
+                pageNumber += 1
+            ) {
+                setStatus(
+                    `A extrair texto do PDF — página ${pageNumber} de ${total}…`
+                );
 
-            const page = await pdf.getPage(pageNumber);
-            const content = await page.getTextContent();
+                const page = await pdf.getPage(pageNumber);
 
-            const text = content.items
-                .map(item => item.str || "")
-                .join(" ")
-                .replace(/[ \t]+/g, " ")
-                .trim();
+                const content = await page.getTextContent();
 
-            pages.push(
-                text
-                    ? `[Página ${pageNumber}]\n${text}`
-                    : ""
-            );
+                const text = content.items
+                    .map(item => item.str || "")
+                    .join(" ")
+                    .replace(/[ \t]+/g, " ")
+                    .trim();
+
+                pages.push(
+                    text
+                        ? `[Página ${pageNumber}]\n${text}`
+                        : ""
+                );
+
+                page.cleanup();
+            }
+
+            const extractedText = pages
+                .filter(Boolean)
+                .join("\n\n");
+
+            return {
+                text: extractedText,
+                pages: total,
+                totalPages: pdf.numPages,
+                method: "Extração de texto PDF (PDF.js)",
+                scanned: !extractedText
+            };
+
+        } finally {
+            if (loadingTask && typeof loadingTask.destroy === "function") {
+                await loadingTask.destroy();
+            }
         }
-
-        const text = pages
-            .filter(Boolean)
-            .join("\n\n");
-
-        return {
-            text,
-            pages: total,
-            totalPages: pdf.numPages,
-            method: "Extração de texto PDF",
-            scanned: !text
-        };
     }
 
     /* ------------------------------------------------------------
@@ -215,11 +266,9 @@
         let worker;
 
         try {
-            // API utilizada nas versões mais recentes.
             worker = await root.Tesseract.createWorker("por+eng");
 
         } catch {
-            // Compatibilidade com versões antigas.
             worker = await root.Tesseract.createWorker();
 
             if (worker.loadLanguage) {
@@ -355,8 +404,6 @@
                 "Revê o conteúdo antes da análise por IA."
             );
 
-            // Evento que permitirá à próxima etapa
-            // receber o documento extraído.
             root.dispatchEvent(
                 new CustomEvent("ct:document-extracted", {
                     detail: structuredClone(extractedDocument)
@@ -439,7 +486,7 @@
             runExtraction
         );
 
-        // Interface pública para a futura integração com IA.
+        // Interface pública para integração com a próxima etapa.
         root.CTDocumentAI = {
             getExtractedDocument: () =>
                 extractedDocument
