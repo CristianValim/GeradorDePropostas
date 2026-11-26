@@ -37,20 +37,25 @@
                 "nif",
                 "n.i.f.",
                 "número de contribuinte",
-                "contribuinte"
+                "contribuinte",
+                "NIPC",
+                "nipc"
             ]
         },
         {
             key: "contact",
             id: "contractContact",
-            label: "Pessoa de contacto",
+            label: "Gerente",
             aliases: [
+                "gerente",
                 "pessoa de contacto",
                 "pessoa de contato",
                 "responsável",
                 "a/c",
                 "a/c contacto",
-                "contacto comercial"
+                "contacto comercial",
+                "nome",
+                "representante"
             ]
         },
         {

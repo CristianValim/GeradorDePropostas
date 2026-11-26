@@ -1418,7 +1418,9 @@ async function importContractCRM() {
             normalizeCompanyName(data.company || "");
 
         $("contractNif").value = data.nif || "";
-        $("contractContact").value = data.contact || "";
+        // Dados da Certidão Permanente preenchem contractContact via interface de revisão.
+        // A importação do CRM não substitui o campo contact/gerente.
+        // $("contractContact").value = data.contact || "";
         $("contractPhone").value = data.phone || "";
         $("contractEmail").value = data.email || "";
 
