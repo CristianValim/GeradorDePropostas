@@ -1,12 +1,30 @@
 
 /* ============================================================
-   CARTRACK — EXTRAÇÃO E REVISÃO DE DADOS DO CLIENTE
+   CARTRACK — EXTRAÇÃO E PREENCHIMENTO DOS DADOS DO CLIENTE
 
    Etapa 2:
-   - Analisa o texto extraído por document-ai.js
-   - Identifica dados através de etiquetas e padrões locais
-   - Apresenta evidências para revisão
-   - Só preenche o contrato após confirmação
+   - Analisa o texto extraído por document-ai.js.
+   - Identifica os dados relevantes da Certidão Permanente.
+   - Preenche diretamente os inputs existentes do contrato.
+   - Permite validar e corrigir os dados nos próprios inputs.
+
+   ORIGEM DOS DADOS:
+
+   Certidão Permanente:
+   - Nome da empresa
+   - NIF / NIPC
+   - Gerente
+   - Morada
+   - Código postal
+   - Localidade
+   - Freguesia
+   - Concelho
+   - Distrito
+   - País
+
+   CRM:
+   - Telefone
+   - Email
 
    Não utiliza serviços externos.
    ============================================================ */
@@ -16,165 +34,89 @@
 
     const $ = id => document.getElementById(id);
 
+    /* ------------------------------------------------------------
+       CONFIGURAÇÃO DOS CAMPOS
+
+       contractContact corresponde ao gerente.
+       Telefone e email não são preenchidos por este módulo.
+       ------------------------------------------------------------ */
+
     const FIELD_DEFS = [
         {
             key: "company",
             id: "contractCompany",
-            label: "Nome da empresa",
-            aliases: [
-                "denominação social",
-                "nome da empresa",
-                "firma",
-                "empresa",
-                "entidade"
-            ]
+            label: "Nome da empresa"
         },
         {
             key: "nif",
             id: "contractNif",
-            label: "NIF",
-            aliases: [
-                "nif",
-                "n.i.f.",
-                "número de contribuinte",
-                "contribuinte",
-                "NIPC",
-                "nipc"
-            ]
+            label: "NIF / NIPC"
         },
         {
-            key: "contact",
+            key: "manager",
             id: "contractContact",
-            label: "Gerente",
-            aliases: [
-                "gerente",
-                "pessoa de contacto",
-                "pessoa de contato",
-                "responsável",
-                "a/c",
-                "a/c contacto",
-                "contacto comercial",
-                "nome",
-                "representante"
-            ]
-        },
-        {
-            key: "phone",
-            id: "contractPhone",
-            label: "Telefone",
-            aliases: [
-                "telefone",
-                "tel.",
-                "tel",
-                "telemóvel",
-                "telemovel",
-                "tlm",
-                "contacto telefónico",
-                "contato telefônico",
-                "phone",
-                "mobile"
-            ]
-        },
-        {
-            key: "email",
-            id: "contractEmail",
-            label: "E-mail",
-            aliases: [
-                "email",
-                "e-mail",
-                "correio eletrónico",
-                "correio eletronico"
-            ]
+            label: "Gerente"
         },
         {
             key: "street",
             id: "contractStreet",
-            label: "Morada / Rua",
-            aliases: [
-                "morada",
-                "endereço",
-                "endereco",
-                "sede",
-                "morada da sede",
-                "rua",
-                "avenida"
-            ]
+            label: "Morada"
         },
         {
             key: "postalCode",
             id: "contractPostalCode",
-            label: "Código postal",
-            aliases: [
-                "código postal",
-                "codigo postal",
-                "cp",
-                "postal code"
-            ]
+            label: "Código postal"
         },
         {
             key: "locality",
             id: "contractLocality",
-            label: "Localidade",
-            aliases: [
-                "localidade",
-                "local",
-                "cidade"
-            ]
+            label: "Localidade"
         },
         {
             key: "parish",
             id: "contractParish",
-            label: "Freguesia",
-            aliases: ["freguesia"]
+            label: "Freguesia"
         },
         {
             key: "municipality",
             id: "contractMunicipality",
-            label: "Concelho",
-            aliases: [
-                "concelho",
-                "município",
-                "municipio"
-            ]
+            label: "Concelho"
         },
         {
             key: "district",
             id: "contractDistrict",
-            label: "Distrito",
-            aliases: ["distrito"]
+            label: "Distrito"
         },
         {
             key: "country",
             id: "contractCountry",
-            label: "País",
-            aliases: [
-                "país",
-                "pais",
-                "country"
-            ]
+            label: "País"
         }
     ];
 
-    let currentCandidates = [];
+    let currentCandidates = {};
 
     /* ------------------------------------------------------------
-       NORMALIZAÇÃO
+       NORMALIZAÇÃO DO TEXTO
        ------------------------------------------------------------ */
 
-    function normalizeLines(text) {
+    function normalizeText(text) {
         return String(text || "")
-            .replace(/\r/g, "")
-            .replace(/[\u00a0\t]+/g, " ")
+            .replace(/\u0000/g, "")
+            .replace(/\r\n?/g, "\n")
+            .replace(/\u00a0/g, " ")
+            .replace(/[ \t]+/g, " ")
+            .trim();
+    }
+
+    function normalizeLines(text) {
+        return normalizeText(text)
             .split("\n")
             .map(line => line.trim())
             .filter(Boolean);
     }
 
-    function escapeRegExp(value) {
-        return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    }
-
-    function cleanValue(value) {
+    function cleanText(value) {
         return String(value || "")
             .replace(/^\s*[:：\-–|]+\s*/, "")
             .replace(/\s+/g, " ")
@@ -182,63 +124,83 @@
             .trim();
     }
 
-    function isProbablyLabel(value) {
-        const text = String(value || "").trim();
+    function normalizeLabel(value) {
+        return String(value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, "");
+    }
 
-        if (!text) return true;
-        if (text.length > 100) return false;
-
-        return /^(nif|n\.i\.f\.|telefone|tel\.?|email|e-mail|morada|endereço|endereco|código postal|codigo postal|localidade|freguesia|concelho|município|municipio|distrito|país|pais|empresa|firma|contacto|contato)\s*[:：]?$/i.test(text);
+    function escapeRegExp(value) {
+        return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
 
     /* ------------------------------------------------------------
-       EXTRAÇÃO POR ETIQUETAS
-       Exemplo: NIF: 123456789
+       PROCURAR VALORES ASSOCIADOS A ETIQUETAS
+
+       Exemplo:
+       Firma: EMPRESA LDA
+       NIPC: 519049004
+
+       Também suporta valores na linha seguinte.
        ------------------------------------------------------------ */
 
-    function findLabelledValue(lines, aliases) {
-        const aliasPattern = aliases
-            .map(escapeRegExp)
-            .sort((a, b) => b.length - a.length)
-            .join("|");
+    function findLabelValue(lines, labels, options = {}) {
+        const normalizedLabels = labels.map(normalizeLabel);
 
-        const expression = new RegExp(
-            "^\\s*(?:" + aliasPattern + ")\\s*(?:[:：\\-–|])?\\s*(.*?)\\s*$",
-            "i"
-        );
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
 
-        for (let index = 0; index < lines.length; index += 1) {
-            const match = lines[index].match(expression);
+            const match = line.match(
+                /^\s*([^:：]+?)\s*[:：]\s*(.*?)\s*$/
+            );
 
             if (!match) continue;
 
-            let value = cleanValue(match[1]);
-            let evidence = lines[index];
+            const label = normalizeLabel(match[1]);
 
-            // Alguns documentos colocam o valor na linha seguinte.
-            if (
-                !value &&
-                lines[index + 1] &&
-                !isProbablyLabel(lines[index + 1])
-            ) {
-                value = cleanValue(lines[index + 1]);
-                evidence += " | " + lines[index + 1];
+            if (!normalizedLabels.includes(label)) {
+                continue;
+            }
+
+            let value = cleanText(match[2]);
+
+            if (!value && options.nextLine !== false) {
+                const nextLine = lines[i + 1];
+
+                if (nextLine && !/^[^:：]{1,50}\s*[:：]/.test(nextLine)) {
+                    value = cleanText(nextLine);
+                }
             }
 
             if (value) {
-                return { value, evidence };
+                return {
+                    value,
+                    evidence: line
+                };
             }
         }
 
         return null;
     }
 
-    function findLineContaining(lines, value) {
-        const normalized = String(value || "").toLowerCase();
+    /* ------------------------------------------------------------
+       EXTRAÇÃO DA FIRMA / NOME DA EMPRESA
+       ------------------------------------------------------------ */
 
-        return lines.find(line =>
-            line.toLowerCase().includes(normalized)
-        ) || value;
+    function extractCompany(lines) {
+        const found = findLabelValue(
+            lines,
+            ["Firma", "Denominação social"]
+        );
+
+        if (!found) return null;
+
+        return {
+            value: found.value,
+            evidence: found.evidence
+        };
     }
 
     /* ------------------------------------------------------------
@@ -269,105 +231,190 @@
     }
 
     function extractNif(lines) {
-        const field = FIELD_DEFS.find(
-            item => item.key === "nif"
-        );
-
-        const labelled = findLabelledValue(
+        const found = findLabelValue(
             lines,
-            field.aliases
+            ["NIPC", "NIF", "Número de identificação fiscal"]
         );
 
-        if (labelled) {
-            const match = labelled.value.match(/\b\d{9}\b/);
+        if (!found) return null;
 
-            if (
-                match &&
-                isValidPortugueseNif(match[0])
-            ) {
-                return {
-                    value: match[0],
-                    evidence: labelled.evidence,
-                    confidence: "Elevada"
-                };
-            }
+        const match = found.value.match(/\b\d{9}\b/);
+
+        if (!match || !isValidPortugueseNif(match[0])) {
+            return null;
         }
 
-        for (const line of lines) {
-            const match = line.match(/\b\d{9}\b/);
+        return {
+            value: match[0],
+            evidence: found.evidence
+        };
+    }
 
-            if (
-                match &&
-                isValidPortugueseNif(match[0]) &&
-                /nif|contribuinte/i.test(line)
+    /* ------------------------------------------------------------
+       EXTRAÇÃO DO GERENTE
+
+       Prioridade:
+       1. Secção GERÊNCIA.
+       2. Nome indicado nessa secção.
+       3. Estruturas de órgãos sociais / órgãos designados.
+
+       Não utiliza nomes encontrados aleatoriamente no documento.
+       ------------------------------------------------------------ */
+
+    function extractManager(lines) {
+        const managerSectionRegex =
+            /^(ger[eê]ncia|[óo]rg[aã]os\s+sociais|[óo]rg[aã]o\(s\)\s+designado\(s\))$/i;
+
+        for (let i = 0; i < lines.length; i++) {
+            const section = cleanText(lines[i]);
+
+            if (!managerSectionRegex.test(section)) {
+                continue;
+            }
+
+            // Procurar o nome dentro da secção.
+            for (
+                let j = i + 1;
+                j < Math.min(i + 12, lines.length);
+                j++
             ) {
-                return {
-                    value: match[0],
-                    evidence: line,
-                    confidence: "Elevada"
-                };
+                const line = lines[j];
+
+                // Não atravessar uma nova secção principal.
+                if (
+                    /^(capital|forma de obrigar|objeto|sede|matr[ií]cula|inscri[cç][aã]o|firma)\s*$/i.test(line)
+                ) {
+                    break;
+                }
+
+                const nameMatch = line.match(
+                    /^\s*Nome\s*[:：]\s*(.+?)\s*$/i
+                );
+
+                if (nameMatch) {
+                    const name = cleanText(nameMatch[1]);
+
+                    if (isPlausiblePersonName(name)) {
+                        return {
+                            value: name,
+                            evidence: line
+                        };
+                    }
+                }
+
+                // Algumas certidões apresentam Nome/Firma.
+                const nameFirmaMatch = line.match(
+                    /^\s*Nome\s*\/\s*Firma\s*[:：]\s*(.+?)\s*$/i
+                );
+
+                if (nameFirmaMatch) {
+                    const name = cleanText(nameFirmaMatch[1]);
+
+                    if (isPlausiblePersonName(name)) {
+                        return {
+                            value: name,
+                            evidence: line
+                        };
+                    }
+                }
             }
         }
 
         return null;
     }
 
+    function isPlausiblePersonName(value) {
+        const name = cleanText(value);
+
+        if (!name || name.length < 5 || name.length > 120) {
+            return false;
+        }
+
+        if (/\d/.test(name)) return false;
+
+        if (
+            /\b(LDA|UNIPESSOAL|LIMITADA|SA|S\.A\.|SOCIEDADE|GERÊNCIA|GERENCIA)\b/i.test(name)
+        ) {
+            return false;
+        }
+
+        return name.split(/\s+/).length >= 2;
+    }
+
     /* ------------------------------------------------------------
-       EXTRAÇÃO DE E-MAIL
+       EXTRAÇÃO DA MORADA DA SEDE
+
+       Procura a etiqueta Sede: e recolhe a morada até encontrar
+       os campos administrativos seguintes.
        ------------------------------------------------------------ */
 
-    function extractEmail(lines) {
-        const text = lines.join("\n");
-
-        const match = text.match(
-            /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
+    function extractStreet(lines) {
+        const found = findLabelValue(
+            lines,
+            ["Sede", "Morada da sede"]
         );
 
-        if (!match) return null;
+        if (!found) return null;
+
+        let value = found.value;
+
+        // Remover dados administrativos caso apareçam na mesma linha.
+        value = value
+            .replace(/\s+(Distrito|Concelho|Freguesia|Código Postal)\s*[:：].*$/i, "")
+            .trim();
+
+        if (!value || value.length < 5) {
+            return null;
+        }
 
         return {
-            value: match[0],
-            evidence: findLineContaining(lines, match[0]),
-            confidence: "Elevada"
+            value,
+            evidence: found.evidence
         };
     }
 
     /* ------------------------------------------------------------
-       EXTRAÇÃO DE CÓDIGO POSTAL
+       EXTRAÇÃO DO CÓDIGO POSTAL
+
+       Aceita:
+       4730-581
+       4730 - 581 Soutelo
+       4730 581 Soutelo
        ------------------------------------------------------------ */
 
     function extractPostalCode(lines) {
-        const field = FIELD_DEFS.find(
-            item => item.key === "postalCode"
-        );
-
-        const labelled = findLabelledValue(
+        const found = findLabelValue(
             lines,
-            field.aliases
+            ["Código Postal", "Codigo Postal", "CP"]
         );
 
-        if (labelled) {
-            const match = labelled.value.match(
-                /\b\d{4}-\d{3}\b/
+        const sources = found
+            ? [found.value]
+            : lines;
+
+        for (const source of sources) {
+            const match = source.match(
+                /\b(\d{4})\s*[- ]\s*(\d{3})\b/
             );
 
             if (match) {
                 return {
-                    value: match[0],
-                    evidence: labelled.evidence,
-                    confidence: "Elevada"
+                    value: `${match[1]}-${match[2]}`,
+                    evidence: found?.evidence || source
                 };
             }
         }
 
+        // Algumas certidões apresentam o código postal sem etiqueta.
         for (const line of lines) {
-            const match = line.match(/\b\d{4}-\d{3}\b/);
+            const match = line.match(
+                /\b(\d{4})\s*[- ]\s*(\d{3})\b/
+            );
 
             if (match) {
                 return {
-                    value: match[0],
-                    evidence: line,
-                    confidence: "Média"
+                    value: `${match[1]}-${match[2]}`,
+                    evidence: line
                 };
             }
         }
@@ -376,63 +423,61 @@
     }
 
     /* ------------------------------------------------------------
-       EXTRAÇÃO DE TELEFONE
-       Só aceita números associados a uma etiqueta telefónica.
+       EXTRAÇÃO DOS CAMPOS ADMINISTRATIVOS
        ------------------------------------------------------------ */
 
-    function extractPhone(lines) {
-        const field = FIELD_DEFS.find(
-            item => item.key === "phone"
-        );
-
-        const labelled = findLabelledValue(
-            lines,
-            field.aliases
-        );
-
-        if (!labelled) return null;
-
-        const match = labelled.value.match(
-            /(?:\+351\s*)?(?:\d[\s.-]*){9,12}/
-        );
-
-        if (!match) return null;
-
-        const value = match[0]
-            .replace(/[\s.-]/g, "")
-            .replace(/^00351/, "+351");
-
-        return {
-            value,
-            evidence: labelled.evidence,
-            confidence: "Elevada"
-        };
-    }
-
-    /* ------------------------------------------------------------
-       EXTRAÇÃO DOS RESTANTES CAMPOS
-       ------------------------------------------------------------ */
-
-    function candidateFromLabel(lines, field, confidence = "Média") {
-        const found = findLabelledValue(
-            lines,
-            field.aliases
-        );
+    function extractAdministrativeField(lines, labels) {
+        const found = findLabelValue(lines, labels);
 
         if (!found) return null;
 
         return {
             value: found.value,
-            evidence: found.evidence,
-            confidence
+            evidence: found.evidence
         };
     }
 
     /* ------------------------------------------------------------
-       ANÁLISE DO DOCUMENTO
+       LOCALIDADE
+
+       Prioridade:
+       1. Texto após o código postal.
+       2. Etiqueta Localidade.
+       3. Etiqueta Local.
        ------------------------------------------------------------ */
 
-    function analyzeDocument(documentData) {
+    function extractLocality(lines) {
+        for (const line of lines) {
+            const match = line.match(
+                /\b\d{4}\s*[- ]\s*\d{3}\s+(.+?)\s*$/
+            );
+
+            if (match) {
+                const locality = cleanText(match[1]);
+
+                if (
+                    locality &&
+                    !/^(concelho|freguesia|distrito)\b/i.test(locality)
+                ) {
+                    return {
+                        value: locality,
+                        evidence: line
+                    };
+                }
+            }
+        }
+
+        return extractAdministrativeField(
+            lines,
+            ["Localidade", "Local"]
+        );
+    }
+
+    /* ------------------------------------------------------------
+       EXTRAÇÃO COMPLETA DA CERTIDÃO
+       ------------------------------------------------------------ */
+
+    function analyzeCertificate(documentData) {
         const lines = normalizeLines(documentData?.text);
 
         if (!lines.length) {
@@ -441,294 +486,191 @@
             );
         }
 
-        const extractors = {
-            company: () =>
-                candidateFromLabel(lines, FIELD_DEFS[0]),
+        const candidates = {
+            company: extractCompany(lines),
+            nif: extractNif(lines),
+            manager: extractManager(lines),
+            street: extractStreet(lines),
+            postalCode: extractPostalCode(lines),
+            locality: extractLocality(lines),
 
-            nif: () =>
-                extractNif(lines),
+            parish: extractAdministrativeField(
+                lines,
+                ["Freguesia"]
+            ),
 
-            contact: () =>
-                candidateFromLabel(lines, FIELD_DEFS[2]),
+            municipality: extractAdministrativeField(
+                lines,
+                ["Concelho", "Município", "Municipio"]
+            ),
 
-            phone: () =>
-                extractPhone(lines),
+            district: extractAdministrativeField(
+                lines,
+                ["Distrito"]
+            ),
 
-            email: () =>
-                extractEmail(lines),
-
-            street: () =>
-                candidateFromLabel(lines, FIELD_DEFS[5]),
-
-            postalCode: () =>
-                extractPostalCode(lines),
-
-            locality: () =>
-                candidateFromLabel(lines, FIELD_DEFS[7]),
-
-            parish: () =>
-                candidateFromLabel(lines, FIELD_DEFS[8]),
-
-            municipality: () =>
-                candidateFromLabel(lines, FIELD_DEFS[9]),
-
-            district: () =>
-                candidateFromLabel(lines, FIELD_DEFS[10]),
-
-            country: () =>
-                candidateFromLabel(lines, FIELD_DEFS[11])
+            country: {
+                value: "Portugal",
+                evidence: "País definido pelo tipo de certidão e morada portuguesa."
+            }
         };
 
-        return FIELD_DEFS
-            .map(field => {
-                const candidate = extractors[field.key]();
-
-                if (!candidate?.value) return null;
-
-                return {
-                    ...field,
-                    ...candidate,
-                    value: String(candidate.value).trim()
-                };
-            })
-            .filter(Boolean);
-    }
-
-    /* ------------------------------------------------------------
-       CONSTRUÇÃO DA INTERFACE DE REVISÃO
-       ------------------------------------------------------------ */
-
-    function createElement(tag, className, text) {
-        const element = document.createElement(tag);
-
-        if (className) {
-            element.className = className;
-        }
-
-        if (text !== undefined) {
-            element.textContent = text;
-        }
-
-        return element;
-    }
-
-    function renderCandidates(candidates) {
-        const panel = $("aiFieldReviewPanel");
-        const container = $("aiFieldReview");
-        const applyButton = $("aiApplyFields");
-        const status = $("aiFieldReviewStatus");
-
-        if (!panel || !container || !applyButton) return;
-
-        currentCandidates = candidates;
-
-        container.replaceChildren();
-        panel.hidden = false;
-
-        applyButton.disabled = candidates.length === 0;
-
-        if (!candidates.length) {
-            container.appendChild(
-                createElement(
-                    "p",
-                    "small",
-                    "Não foram identificados campos com etiquetas suficientemente claras. Podes preencher o contrato manualmente."
-                )
-            );
-
-            if (status) {
-                status.textContent =
-                    "Sem dados identificados automaticamente.";
+        // Remover campos não identificados.
+        Object.keys(candidates).forEach(key => {
+            if (!candidates[key]?.value) {
+                delete candidates[key];
             }
-
-            return;
-        }
-
-        candidates.forEach(candidate => {
-            const row = createElement("div", "ai-field-row");
-            const heading = createElement("div", "ai-field-heading");
-
-            const label = createElement(
-                "label",
-                "ai-field-label",
-                candidate.label
-            );
-
-            const confidence = createElement(
-                "span",
-                "ai-field-confidence",
-                "Correspondência " + candidate.confidence
-            );
-
-            const checkboxLabel = createElement(
-                "label",
-                "ai-field-apply-label"
-            );
-
-            const checkbox = document.createElement("input");
-
-            checkbox.type = "checkbox";
-            checkbox.className = "ai-field-apply";
-            checkbox.dataset.fieldId = candidate.id;
-
-            const target = $(candidate.id);
-
-            // Não substituir automaticamente dados já preenchidos.
-            checkbox.checked = !target || !target.value.trim();
-
-            checkboxLabel.append(
-                checkbox,
-                document.createTextNode(" Aplicar")
-            );
-
-            const input = document.createElement("input");
-
-            input.type = "text";
-            input.className = "ai-field-value";
-            input.value = candidate.value;
-            input.dataset.fieldId = candidate.id;
-            input.autocomplete = "off";
-
-            const evidence = createElement(
-                "p",
-                "ai-field-evidence",
-                "Origem: " + candidate.evidence
-            );
-
-            heading.append(
-                label,
-                confidence,
-                checkboxLabel
-            );
-
-            row.append(
-                heading,
-                input,
-                evidence
-            );
-
-            container.appendChild(row);
         });
 
-        if (status) {
-            status.textContent =
-                `${candidates.length} campo(s) identificado(s). ` +
-                "Confirma os valores e seleciona os que pretendes aplicar.";
-        }
+        return candidates;
     }
 
     /* ------------------------------------------------------------
-       APLICAR AO FORMULÁRIO DO CONTRATO
+       PREENCHIMENTO DOS INPUTS EXISTENTES
        ------------------------------------------------------------ */
 
-    async function applyCandidates() {
-        const container = $("aiFieldReview");
-        const status = $("aiFieldReviewStatus");
-        const applyButton = $("aiApplyFields");
+    function dispatchFieldEvents(element) {
+        element.dispatchEvent(
+            new Event("input", { bubbles: true })
+        );
 
-        if (!container) return;
+        element.dispatchEvent(
+            new Event("change", { bubbles: true })
+        );
+    }
 
-        const inputs = [
-            ...container.querySelectorAll(".ai-field-value")
-        ];
-
+    async function applyToContract(candidates) {
         let applied = 0;
+        const missingInputs = [];
 
-        inputs.forEach(input => {
-            const id = input.dataset.fieldId;
+        FIELD_DEFS.forEach(field => {
+            const candidate = candidates[field.key];
 
-            const checkbox = container.querySelector(
-                `.ai-field-apply[data-field-id="${CSS.escape(id)}"]`
-            );
-
-            const target = $(id);
-            const value = input.value.trim();
-
-            if (!checkbox?.checked || !target || !value) {
+            if (!candidate?.value) {
                 return;
             }
 
-            target.value = value;
+            const target = $(field.id);
 
-            target.dispatchEvent(
-                new Event("input", { bubbles: true })
-            );
+            if (!target) {
+                missingInputs.push(field.id);
 
-            target.dispatchEvent(
-                new Event("change", { bubbles: true })
-            );
+                console.warn(
+                    `[Cartrack Document AI] Input não encontrado: ${field.id}`
+                );
 
-            applied += 1;
+                return;
+            }
+
+            // Preencher diretamente o input existente.
+            target.value = cleanText(candidate.value);
+
+            dispatchFieldEvents(target);
+
+            applied++;
         });
 
-        // Guarda também através da função já existente no projeto.
+        // Preservar a rotina de gravação existente.
         if (typeof root.saveContractData === "function") {
             await root.saveContractData();
         }
 
-        if (status) {
-            status.textContent = applied
-                ? `${applied} campo(s) aplicado(s) ao contrato. Confirma os dados antes de gerar o PDF.`
-                : "Não foi selecionado nenhum campo para aplicar.";
+        return {
+            applied,
+            missingInputs
+        };
+    }
+
+    /* ------------------------------------------------------------
+       RECEBER DOCUMENTO EXTRAÍDO
+       ------------------------------------------------------------ */
+
+    async function handleDocumentExtracted(event) {
+        const detail = event.detail || {};
+
+        if (!detail.text) {
+            return;
         }
 
-        const contractStatus = $("contractStatus");
+        try {
+            currentCandidates = analyzeCertificate(detail);
 
-        if (contractStatus && applied) {
-            contractStatus.textContent =
-                `${applied} campo(s) importado(s) do documento. ` +
-                "Revê os dados antes de gerar o contrato.";
-        }
+            const result = await applyToContract(
+                currentCandidates
+            );
 
-        if (applyButton) {
-            applyButton.textContent =
-                "Atualizar dados do contrato";
+            console.log(
+                "[Cartrack Document AI] Dados identificados:",
+                currentCandidates
+            );
+
+            console.log(
+                "[Cartrack Document AI] Resultado do preenchimento:",
+                result
+            );
+
+            const status = $("aiDocumentStatus");
+
+            if (status) {
+                if (result.applied > 0) {
+                    status.textContent =
+                        `Certidão analisada: ${result.applied} campo(s) preenchido(s). ` +
+                        "Revê e valida os dados diretamente nos campos do contrato.";
+
+                    status.dataset.state = "success";
+                } else {
+                    status.textContent =
+                        "A certidão foi lida, mas não foram identificados dados suficientes para preencher o contrato.";
+
+                    status.dataset.state = "error";
+                }
+            }
+
+        } catch (error) {
+            console.error(
+                "[Cartrack Document Fields] Erro:",
+                error
+            );
+
+            const status = $("aiDocumentStatus");
+
+            if (status) {
+                status.textContent =
+                    "O documento foi lido, mas ocorreu um erro ao preencher os campos.";
+
+                status.dataset.state = "error";
+            }
         }
     }
 
     /* ------------------------------------------------------------
-       INICIALIZAÇÃO E EVENTOS
+       INICIALIZAÇÃO
        ------------------------------------------------------------ */
 
     function initialize() {
-        const applyButton = $("aiApplyFields");
-
-        if (applyButton) {
-            applyButton.addEventListener(
-                "click",
-                applyCandidates
-            );
-        }
-
         root.addEventListener(
             "ct:document-extracted",
-            event => {
-                try {
-                    const candidates = analyzeDocument(event.detail);
-                    renderCandidates(candidates);
-
-                } catch (error) {
-                    console.error(
-                        "[Cartrack Document Fields]",
-                        error
-                    );
-
-                    const status = $("aiFieldReviewStatus");
-
-                    if (status) {
-                        status.textContent = error.message;
-                    }
-                }
-            }
+            handleDocumentExtracted
         );
     }
 
-    // API pública para futuras integrações.
-    root.CTDocumentFields = {
-        analyze: analyzeDocument,
+    /* ------------------------------------------------------------
+       API PÚBLICA
+       ------------------------------------------------------------ */
 
-        getCandidates: () =>
-            currentCandidates.map(item => ({ ...item }))
+    root.CTDocumentFields = {
+        analyze: analyzeCertificate,
+
+        getCandidates: () => ({
+            ...currentCandidates
+        }),
+
+        applyToContract: () =>
+            applyToContract(currentCandidates),
+
+        clear: () => {
+            currentCandidates = {};
+        }
     };
 
     if (document.readyState === "loading") {

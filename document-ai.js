@@ -7,8 +7,16 @@
    - PDF: PDF.js (pdf.mjs + pdf.worker.mjs)
    - Imagens: OCR através de Tesseract.js
 
-   Os documentos são processados localmente.
-   Não são enviados para serviços externos.
+   FUNCIONAMENTO:
+   1. O utilizador seleciona um documento.
+   2. O documento é processado localmente.
+   3. O texto extraído é enviado temporariamente para
+      document-fields.js.
+   4. document-fields.js identifica os dados relevantes
+      e preenche diretamente os campos do contrato.
+
+   O texto integral não é apresentado nem guardado.
+   Os documentos não são enviados para serviços externos.
    ============================================================ */
 
 (function (root) {
@@ -21,6 +29,8 @@
 
     let selectedFile = null;
     let extractedDocument = null;
+    let isExtracting = false;
+    let initialized = false;
 
     // Cache da biblioteca PDF.js.
     let pdfjsPromise = null;
@@ -43,6 +53,27 @@
         const index = name.lastIndexOf(".");
 
         return index >= 0 ? name.slice(index + 1) : "";
+    }
+
+    function getFileType(file) {
+        return String(file?.type || "").toLowerCase();
+    }
+
+    function isSupportedFile(file) {
+        const extension = getExtension(file);
+        const mimeType = getFileType(file);
+
+        return (
+            extension === "txt" ||
+            extension === "docx" ||
+            extension === "pdf" ||
+            ["png", "jpg", "jpeg", "webp", "tif", "tiff"]
+                .includes(extension) ||
+            mimeType === "text/plain" ||
+            mimeType === "application/pdf" ||
+            mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+            mimeType.startsWith("image/")
+        );
     }
 
     /* ------------------------------------------------------------
@@ -79,7 +110,7 @@
                 return pdfjs;
 
             }).catch(error => {
-                // Permite tentar novamente caso o carregamento falhe.
+                // Permite tentar novamente se o carregamento falhar.
                 pdfjsPromise = null;
                 throw error;
             });
@@ -104,6 +135,7 @@
         return {
             text: decodeText(await file.arrayBuffer()),
             pages: 1,
+            totalPages: 1,
             method: "Leitura de texto"
         };
     }
@@ -166,6 +198,7 @@
         return {
             text: text.trim(),
             pages: null,
+            totalPages: null,
             method: "Extração de texto DOCX"
         };
     }
@@ -176,7 +209,6 @@
        ------------------------------------------------------------ */
 
     async function extractPdf(file) {
-
         setStatus("A carregar a biblioteca PDF.js…");
 
         const pdfjs = await loadPdfJs();
@@ -191,42 +223,49 @@
             data: bytes
         });
 
-        const pdf = await loadingTask.promise;
-
-        const total = Math.min(
-            pdf.numPages,
-            MAX_PDF_PAGES
-        );
-
-        const pages = [];
+        let pdf = null;
 
         try {
+            pdf = await loadingTask.promise;
+
+            const totalPages = pdf.numPages;
+
+            const pagesToRead = Math.min(
+                totalPages,
+                MAX_PDF_PAGES
+            );
+
+            const pages = [];
+
             for (
                 let pageNumber = 1;
-                pageNumber <= total;
+                pageNumber <= pagesToRead;
                 pageNumber += 1
             ) {
                 setStatus(
-                    `A extrair texto do PDF — página ${pageNumber} de ${total}…`
+                    `A extrair texto do PDF — página ${pageNumber} de ${pagesToRead}…`
                 );
 
                 const page = await pdf.getPage(pageNumber);
 
-                const content = await page.getTextContent();
+                try {
+                    const content = await page.getTextContent();
 
-                const text = content.items
-                    .map(item => item.str || "")
-                    .join(" ")
-                    .replace(/[ \t]+/g, " ")
-                    .trim();
+                    const text = content.items
+                        .map(item => item.str || "")
+                        .join(" ")
+                        .replace(/[ \t]+/g, " ")
+                        .trim();
 
-                pages.push(
-                    text
-                        ? `[Página ${pageNumber}]\n${text}`
-                        : ""
-                );
+                    pages.push(
+                        text
+                            ? `[Página ${pageNumber}]\n${text}`
+                            : ""
+                    );
 
-                page.cleanup();
+                } finally {
+                    page.cleanup();
+                }
             }
 
             const extractedText = pages
@@ -235,14 +274,18 @@
 
             return {
                 text: extractedText,
-                pages: total,
-                totalPages: pdf.numPages,
+                pages: pagesToRead,
+                totalPages,
                 method: "Extração de texto PDF (PDF.js)",
                 scanned: !extractedText
             };
 
         } finally {
-            if (loadingTask && typeof loadingTask.destroy === "function") {
+            // O destroy pertence ao loadingTask, não ao objeto PDF.
+            if (
+                loadingTask &&
+                typeof loadingTask.destroy === "function"
+            ) {
                 await loadingTask.destroy();
             }
         }
@@ -266,9 +309,11 @@
         let worker;
 
         try {
+            // Compatibilidade com versões recentes do Tesseract.js.
             worker = await root.Tesseract.createWorker("por+eng");
 
         } catch {
+            // Compatibilidade com versões anteriores.
             worker = await root.Tesseract.createWorker();
 
             if (worker.loadLanguage) {
@@ -281,6 +326,8 @@
         }
 
         try {
+            setStatus("A reconhecer o texto da imagem…");
+
             const result = await worker.recognize(file);
 
             return {
@@ -289,12 +336,13 @@
                 ).trim(),
 
                 pages: 1,
+                totalPages: 1,
 
                 method: "OCR local (português + inglês)"
             };
 
         } finally {
-            if (worker.terminate) {
+            if (worker?.terminate) {
                 await worker.terminate();
             }
         }
@@ -306,11 +354,12 @@
 
     async function extractDocument(file) {
         const extension = getExtension(file);
+        const mimeType = getFileType(file);
 
         // TXT
         if (
             extension === "txt" ||
-            file.type === "text/plain"
+            mimeType === "text/plain"
         ) {
             return extractTxt(file);
         }
@@ -318,7 +367,7 @@
         // DOCX
         if (
             extension === "docx" ||
-            file.type ===
+            mimeType ===
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         ) {
             return extractDocx(file);
@@ -327,14 +376,14 @@
         // PDF
         if (
             extension === "pdf" ||
-            file.type === "application/pdf"
+            mimeType === "application/pdf"
         ) {
             const result = await extractPdf(file);
 
             if (result.scanned) {
                 throw new Error(
                     "Este PDF parece digitalizado e não contém texto selecionável. " +
-                    "A leitura OCR de páginas PDF será acrescentada na próxima etapa."
+                    "A leitura OCR de páginas PDF ainda não está implementada."
                 );
             }
 
@@ -343,7 +392,7 @@
 
         // IMAGENS
         if (
-            file.type.startsWith("image/") ||
+            mimeType.startsWith("image/") ||
             ["png", "jpg", "jpeg", "webp", "tif", "tiff"]
                 .includes(extension)
         ) {
@@ -356,58 +405,97 @@
     }
 
     /* ------------------------------------------------------------
+       ENVIAR TEXTO PARA O EXTRATOR DE CAMPOS
+
+       O texto é enviado temporariamente através de um evento.
+       O document-fields.js é responsável por:
+       - Identificar os dados relevantes.
+       - Validar os valores.
+       - Preencher os inputs do contrato.
+       - Guardar os dados do contrato.
+
+       Não é apresentada uma caixa com o texto integral.
+       ------------------------------------------------------------ */
+
+    function sendTextToFieldExtractor(text, metadata) {
+        if (!root.CTDocumentFields) {
+            throw new Error(
+                "O módulo document-fields.js não está carregado. " +
+                "Verifica a ordem de carregamento dos scripts."
+            );
+        }
+
+        root.dispatchEvent(
+            new CustomEvent("ct:document-extracted", {
+                detail: {
+                    ...metadata,
+                    text
+                }
+            })
+        );
+    }
+
+    /* ------------------------------------------------------------
        EXECUTAR EXTRAÇÃO
        ------------------------------------------------------------ */
 
     async function runExtraction() {
         const button = $("aiExtractDocument");
-        const output = $("aiExtractedText");
 
-        if (!selectedFile || !button || !output) {
+        if (!selectedFile || !button || isExtracting) {
             return;
         }
 
+        isExtracting = true;
+
         button.disabled = true;
-        button.textContent = "A extrair…";
-        output.value = "";
+        button.textContent = "A analisar certidão…";
 
         try {
             const result = await extractDocument(selectedFile);
 
-            const text = String(
-                result.text || ""
-            ).trim();
+            const text = String(result.text || "").trim();
 
             if (!text) {
                 throw new Error(
-                    "Não foi encontrado texto no documento."
+                    "Não foram encontrados dados no documento."
                 );
             }
 
-            extractedDocument = {
+            // Guardar apenas os metadados.
+            // O texto integral não fica guardado nesta variável.
+            const metadata = {
                 fileName: selectedFile.name,
                 mimeType: selectedFile.type || "",
                 method: result.method,
                 pages: result.pages,
-                text,
+                totalPages: result.totalPages,
                 extractedAt: new Date().toISOString()
             };
 
-            output.value = text;
+            // Enviar o texto temporariamente para document-fields.js.
+            sendTextToFieldExtractor(text, metadata);
 
-            const pageInfo = result.pages
-                ? ` · ${result.pages} página(s)`
-                : "";
+            // Guardar apenas os metadados do documento.
+            extractedDocument = metadata;
+
+            let pageInfo = "";
+
+            if (result.pages) {
+                if (
+                    result.totalPages &&
+                    result.totalPages > result.pages
+                ) {
+                    pageInfo =
+                        ` · Foram lidas ${result.pages} de ${result.totalPages} páginas`;
+                } else {
+                    pageInfo = ` · ${result.pages} página(s)`;
+                }
+            }
 
             setStatus(
-                `Texto extraído com sucesso — ${result.method}${pageInfo}. ` +
-                "Revê o conteúdo antes da análise por IA."
-            );
-
-            root.dispatchEvent(
-                new CustomEvent("ct:document-extracted", {
-                    detail: structuredClone(extractedDocument)
-                })
+                `Documento analisado com sucesso${pageInfo}. ` +
+                "Os dados relevantes foram encaminhados para os campos do contrato."
             );
 
         } catch (error) {
@@ -416,16 +504,44 @@
                 error
             );
 
+            extractedDocument = null;
+
             setStatus(
-                error.message ||
+                error?.message ||
                 "Não foi possível ler o documento.",
                 true
             );
 
         } finally {
+            isExtracting = false;
+
             button.disabled = !selectedFile;
-            button.textContent = "Extrair texto do documento";
+            button.textContent = "Extrair dados da certidão";
         }
+    }
+
+    /* ------------------------------------------------------------
+       LIMPAR DOCUMENTO
+       ------------------------------------------------------------ */
+
+    function clearDocument() {
+        const input = $("aiDocumentFile");
+        const button = $("aiExtractDocument");
+
+        selectedFile = null;
+        extractedDocument = null;
+
+        if (input) {
+            input.value = "";
+        }
+
+        if (button) {
+            button.disabled = true;
+        }
+
+        setStatus(
+            "Documento removido da sessão."
+        );
     }
 
     /* ------------------------------------------------------------
@@ -433,6 +549,8 @@
        ------------------------------------------------------------ */
 
     function initialize() {
+        if (initialized) return;
+
         const input = $("aiDocumentFile");
         const button = $("aiExtractDocument");
 
@@ -440,21 +558,32 @@
             return;
         }
 
+        initialized = true;
+
+        button.disabled = true;
+
         input.addEventListener("change", () => {
             selectedFile = input.files?.[0] || null;
             extractedDocument = null;
-
-            const output = $("aiExtractedText");
-
-            if (output) {
-                output.value = "";
-            }
 
             if (!selectedFile) {
                 button.disabled = true;
 
                 setStatus(
                     "Seleciona um documento para começar."
+                );
+
+                return;
+            }
+
+            if (selectedFile.size === 0) {
+                selectedFile = null;
+                input.value = "";
+                button.disabled = true;
+
+                setStatus(
+                    "O ficheiro selecionado está vazio.",
+                    true
                 );
 
                 return;
@@ -467,6 +596,19 @@
 
                 setStatus(
                     "O ficheiro excede o limite de 25 MB.",
+                    true
+                );
+
+                return;
+            }
+
+            if (!isSupportedFile(selectedFile)) {
+                selectedFile = null;
+                input.value = "";
+                button.disabled = true;
+
+                setStatus(
+                    "Formato não suportado. Utiliza PDF, DOCX, TXT ou uma imagem.",
                     true
                 );
 
@@ -486,28 +628,20 @@
             runExtraction
         );
 
-        // Interface pública para integração com a próxima etapa.
+        // Interface pública para integração com outros módulos.
         root.CTDocumentAI = {
             getExtractedDocument: () =>
                 extractedDocument
-                    ? structuredClone(extractedDocument)
+                    ? { ...extractedDocument }
                     : null,
 
-            clear: () => {
-                selectedFile = null;
-                extractedDocument = null;
-
-                input.value = "";
-                button.disabled = true;
-
-                $("aiExtractedText").value = "";
-
-                setStatus(
-                    "Documento removido da sessão."
-                );
-            }
+            clear: clearDocument
         };
     }
+
+    /* ------------------------------------------------------------
+       ARRANQUE
+       ------------------------------------------------------------ */
 
     if (document.readyState === "loading") {
         document.addEventListener(
