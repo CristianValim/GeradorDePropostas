@@ -592,27 +592,31 @@
 </section>
 
 
-            <!-- ==============================================
-                DADOS DAS VIATURAS
-                ============================================== -->
+    <!-- ==============================================
+        DADOS DAS VIATURAS
+        ============================================== -->
 
-            <section class="panel">
+    <section class="panel">
 
-                <h2>Viaturas</h2>
+        <h2>Viaturas</h2>
 
-                <p class="small">
-                    Adiciona as viaturas abrangidas pelo contrato.
-                </p>
+        <p class="small">
+            Adiciona as viaturas abrangidas pelo contrato.
+            Podes preencher os dados manualmente ou importar
+            uma fotografia do Documento Único Automóvel (DUA).
+        </p>
 
-                <div id="contractVehicles">
+        <div id="contractVehicles"></div>
 
-                    <p class="empty-message">
-                        Os campos das viaturas serão apresentados aqui.
-                    </p>
+        <button
+            id="addContractVehicle"
+            class="secondary"
+            type="button"
+        >
+            ＋ Adicionar viatura
+        </button>
 
-                </div>
-
-            </section>
+    </section>
 
 
             <!-- ==============================================
@@ -644,6 +648,9 @@
 
     <!-- Biblioteca utilizada para processar documentos DOCX. -->
     <script src="lib/jszip.min.js"></script>
+
+    <!-- OCR local para leitura das fotografias dos DUA -->
+    <script src="lib/tesseract/tesseract.min.js"></script>
 
     <!-- Núcleo partilhado: modelos, preços, serviços e validações. -->
     <script src="proposal/core/core.js"></script>

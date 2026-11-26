@@ -15,15 +15,29 @@
    4. document-fields.js identifica os dados relevantes
       e preenche diretamente os campos do contrato.
 
-   O texto integral não é apresentado nem guardado.
-   Os documentos não são enviados para serviços externos.
+   OCR DOS DUA:
+   - Disponibiliza uma função independente para reconhecer
+     texto em fotografias dos Documentos Únicos Automóveis.
+   - Não envia o texto do DUA para document-fields.js.
+   - Não interfere com a importação da Certidão Permanente.
+
+   PRIVACIDADE:
+   - Os documentos são processados localmente.
+   - Não são enviados para serviços externos.
+   - O texto integral não é guardado neste módulo.
    ============================================================ */
 
 (function (root) {
     "use strict";
 
+    /* ============================================================
+       CONFIGURAÇÕES
+       ============================================================ */
+
     const MAX_FILE_SIZE = 25 * 1024 * 1024;
     const MAX_PDF_PAGES = 40;
+
+    const TESSERACT_BASE_PATH = "lib/tesseract/";
 
     const $ = id => document.getElementById(id);
 
@@ -35,9 +49,9 @@
     // Cache da biblioteca PDF.js.
     let pdfjsPromise = null;
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        ESTADO E MENSAGENS
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     function setStatus(message, isError = false) {
         const status = $("aiDocumentStatus");
@@ -52,11 +66,26 @@
         const name = String(file?.name || "").toLowerCase();
         const index = name.lastIndexOf(".");
 
-        return index >= 0 ? name.slice(index + 1) : "";
+        return index >= 0
+            ? name.slice(index + 1)
+            : "";
     }
 
     function getFileType(file) {
         return String(file?.type || "").toLowerCase();
+    }
+
+    function isImageFile(file) {
+        if (!file) return false;
+
+        const extension = getExtension(file);
+        const mimeType = getFileType(file);
+
+        return (
+            mimeType.startsWith("image/") ||
+            ["png", "jpg", "jpeg", "webp", "tif", "tiff", "bmp"]
+                .includes(extension)
+        );
     }
 
     function isSupportedFile(file) {
@@ -67,16 +96,15 @@
             extension === "txt" ||
             extension === "docx" ||
             extension === "pdf" ||
-            ["png", "jpg", "jpeg", "webp", "tif", "tiff"]
-                .includes(extension) ||
+            isImageFile(file) ||
             mimeType === "text/plain" ||
             mimeType === "application/pdf" ||
-            mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-            mimeType.startsWith("image/")
+            mimeType ===
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         );
     }
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        CARREGAR PDF.JS — ES MODULE
 
        Utiliza:
@@ -84,44 +112,44 @@
        lib/pdf.worker.mjs
 
        A biblioteca é carregada apenas uma vez.
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     async function loadPdfJs() {
         if (!pdfjsPromise) {
             pdfjsPromise = import(
                 chrome.runtime.getURL("lib/pdf.mjs")
-            ).then(pdfjs => {
+            )
+                .then(pdfjs => {
+                    if (!pdfjs?.getDocument) {
+                        throw new Error(
+                            "O ficheiro pdf.mjs não disponibiliza getDocument."
+                        );
+                    }
 
-                if (!pdfjs?.getDocument) {
-                    throw new Error(
-                        "O ficheiro pdf.mjs não disponibiliza getDocument."
-                    );
-                }
+                    if (!pdfjs.GlobalWorkerOptions) {
+                        throw new Error(
+                            "Não foi possível configurar o PDF.js."
+                        );
+                    }
 
-                if (!pdfjs.GlobalWorkerOptions) {
-                    throw new Error(
-                        "Não foi possível configurar o PDF.js."
-                    );
-                }
+                    pdfjs.GlobalWorkerOptions.workerSrc =
+                        chrome.runtime.getURL("lib/pdf.worker.mjs");
 
-                pdfjs.GlobalWorkerOptions.workerSrc =
-                    chrome.runtime.getURL("lib/pdf.worker.mjs");
-
-                return pdfjs;
-
-            }).catch(error => {
-                // Permite tentar novamente se o carregamento falhar.
-                pdfjsPromise = null;
-                throw error;
-            });
+                    return pdfjs;
+                })
+                .catch(error => {
+                    // Permite tentar novamente se o carregamento falhar.
+                    pdfjsPromise = null;
+                    throw error;
+                });
         }
 
         return pdfjsPromise;
     }
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        EXTRAÇÃO TXT
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     function decodeText(buffer) {
         return new TextDecoder("utf-8")
@@ -140,10 +168,11 @@
         };
     }
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        EXTRAÇÃO DOCX
+
        Utiliza a biblioteca JSZip.
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     async function extractDocx(file) {
         if (!root.JSZip) {
@@ -203,10 +232,11 @@
         };
     }
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        EXTRAÇÃO PDF
+
        Utiliza PDF.js através de módulos ES.
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     async function extractPdf(file) {
         setStatus("A carregar a biblioteca PDF.js…");
@@ -281,7 +311,7 @@
             };
 
         } finally {
-            // O destroy pertence ao loadingTask, não ao objeto PDF.
+            // O destroy pertence ao loadingTask.
             if (
                 loadingTask &&
                 typeof loadingTask.destroy === "function"
@@ -291,66 +321,244 @@
         }
     }
 
-    /* ------------------------------------------------------------
-       EXTRAÇÃO DE IMAGENS
-       Requer Tesseract.js e dados de idioma locais.
-       ------------------------------------------------------------ */
+    /* ============================================================
+       CONFIGURAÇÃO DO TESSERACT.JS LOCAL
 
-    async function extractImage(file) {
+       Estrutura esperada:
+
+       lib/
+       └── tesseract/
+           ├── tesseract.min.js
+           ├── worker.min.js
+           ├── core/
+           │   ├── tesseract-core.wasm.js
+           │   ├── tesseract-core.wasm
+           │   ├── tesseract-core-simd.wasm.js
+           │   ├── tesseract-core-simd.wasm
+           │   ├── tesseract-core-lstm.wasm.js
+           │   ├── tesseract-core-lstm.wasm
+           │   ├── tesseract-core-simd-lstm.wasm.js
+           │   └── tesseract-core-simd-lstm.wasm
+           └── lang/
+               ├── por.traineddata
+               └── eng.traineddata
+
+       Todos os recursos são carregados da própria extensão.
+       Não utiliza CDN nem serviços externos.
+       ============================================================ */
+
+    async function createLocalOcrWorker(onProgress = null) {
         if (!root.Tesseract?.createWorker) {
             throw new Error(
-                "Tesseract.js não está instalado. " +
-                "Adiciona a biblioteca local e os dados de idioma."
+                "Tesseract.js não está carregado. " +
+                "Verifica se o script tesseract.min.js está incluído no HTML."
             );
         }
 
-        setStatus("A preparar o OCR local…");
+        const basePath = chrome.runtime.getURL(
+            TESSERACT_BASE_PATH
+        );
 
-        let worker;
+        const workerPath =
+            basePath + "worker.min.js";
+
+        const corePath =
+            basePath + "core";
+
+        const langPath =
+            basePath + "lang";
 
         try {
-            // Compatibilidade com versões recentes do Tesseract.js.
-            worker = await root.Tesseract.createWorker("por+eng");
+            const worker = await root.Tesseract.createWorker(
+                "por+eng",
+                1,
+                {
+                    workerPath,
+                    corePath,
+                    langPath,
 
-        } catch {
-            // Compatibilidade com versões anteriores.
-            worker = await root.Tesseract.createWorker();
+                    // Os ficheiros de idioma não estão comprimidos.
+                    gzip: false,
 
-            if (worker.loadLanguage) {
-                await worker.loadLanguage("por+eng");
-            }
+                    // Evita criar workers através de Blob URLs.
+                    workerBlobURL: false,
 
-            if (worker.initialize) {
-                await worker.initialize("por+eng");
-            }
+                    logger: message => {
+                        if (typeof onProgress === "function") {
+                            onProgress(message);
+                            return;
+                        }
+
+                        if (
+                            message?.status === "recognizing text"
+                        ) {
+                            const percentage = Math.round(
+                                (message.progress || 0) * 100
+                            );
+
+                            setStatus(
+                                `A reconhecer o texto da imagem… ${percentage}%`
+                            );
+                        }
+
+                        if (
+                            message?.status === "loading language model"
+                        ) {
+                            setStatus(
+                                "A carregar os idiomas do OCR…"
+                            );
+                        }
+
+                        if (
+                            message?.status === "loading tesseract core"
+                        ) {
+                            setStatus(
+                                "A preparar o motor de reconhecimento…"
+                            );
+                        }
+                    }
+                }
+            );
+
+            return worker;
+
+        } catch (error) {
+            console.error(
+                "[Cartrack OCR] Erro ao criar o worker:",
+                error
+            );
+
+            throw new Error(
+                "Não foi possível iniciar o OCR local. " +
+                "Verifica os ficheiros do Tesseract, do core e dos idiomas. " +
+                (error?.message || "")
+            );
+        }
+    }
+
+    /* ============================================================
+       RECONHECIMENTO DE TEXTO DE UMA IMAGEM
+
+       Função partilhada por:
+       - Importador de documentos.
+       - Importador de fotografias dos DUA.
+
+       onProgress é opcional.
+
+       Quando fornecido, o progresso é enviado para essa função
+       e não altera o estado da importação da Certidão Permanente.
+       ============================================================ */
+
+    async function recognizeImageText(
+        file,
+        onProgress = null
+    ) {
+        if (!file || !isImageFile(file)) {
+            throw new Error(
+                "Seleciona uma imagem válida."
+            );
         }
 
+        if (file.size === 0) {
+            throw new Error(
+                "A imagem selecionada está vazia."
+            );
+        }
+
+        if (file.size > MAX_FILE_SIZE) {
+            throw new Error(
+                "A imagem excede o limite de 25 MB."
+            );
+        }
+
+        if (typeof onProgress !== "function") {
+            setStatus("A preparar o OCR local…");
+        } else {
+            onProgress({
+                status: "preparing",
+                progress: 0
+            });
+        }
+
+        let worker = null;
+
         try {
-            setStatus("A reconhecer o texto da imagem…");
+            worker = await createLocalOcrWorker(onProgress);
+
+            if (typeof onProgress !== "function") {
+                setStatus(
+                    "A reconhecer o texto da imagem…"
+                );
+            } else {
+                onProgress({
+                    status: "recognizing text",
+                    progress: 0
+                });
+            }
 
             const result = await worker.recognize(file);
 
-            return {
-                text: String(
-                    result?.data?.text || ""
-                ).trim(),
+            const text = String(
+                result?.data?.text || ""
+            ).trim();
 
-                pages: 1,
-                totalPages: 1,
+            if (!text) {
+                throw new Error(
+                    "Não foi possível reconhecer texto na imagem. " +
+                    "Tenta utilizar uma fotografia mais nítida e com boa iluminação."
+                );
+            }
 
-                method: "OCR local (português + inglês)"
-            };
+            return text;
+
+        } catch (error) {
+            console.error(
+                "[Cartrack OCR] Erro no reconhecimento:",
+                error
+            );
+
+            throw error;
 
         } finally {
-            if (worker?.terminate) {
-                await worker.terminate();
+            if (
+                worker &&
+                typeof worker.terminate === "function"
+            ) {
+                try {
+                    await worker.terminate();
+                } catch (error) {
+                    console.warn(
+                        "[Cartrack OCR] Não foi possível encerrar o worker:",
+                        error
+                    );
+                }
             }
         }
     }
 
-    /* ------------------------------------------------------------
+    /* ============================================================
+       EXTRAÇÃO DE IMAGENS PARA O IMPORTADOR DE DOCUMENTOS
+
+       Esta função mantém a integração com a Certidão Permanente.
+
+       O texto é devolvido ao fluxo normal de extração e enviado
+       temporariamente para document-fields.js.
+       ============================================================ */
+
+    async function extractImage(file) {
+        const text = await recognizeImageText(file);
+
+        return {
+            text,
+            pages: 1,
+            totalPages: 1,
+            method: "OCR local (português + inglês)"
+        };
+    }
+
+    /* ============================================================
        IDENTIFICAR E PROCESSAR DOCUMENTO
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     async function extractDocument(file) {
         const extension = getExtension(file);
@@ -391,11 +599,7 @@
         }
 
         // IMAGENS
-        if (
-            mimeType.startsWith("image/") ||
-            ["png", "jpg", "jpeg", "webp", "tif", "tiff"]
-                .includes(extension)
-        ) {
+        if (isImageFile(file)) {
             return extractImage(file);
         }
 
@@ -404,10 +608,11 @@
         );
     }
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        ENVIAR TEXTO PARA O EXTRATOR DE CAMPOS
 
        O texto é enviado temporariamente através de um evento.
+
        O document-fields.js é responsável por:
        - Identificar os dados relevantes.
        - Validar os valores.
@@ -415,7 +620,7 @@
        - Guardar os dados do contrato.
 
        Não é apresentada uma caixa com o texto integral.
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     function sendTextToFieldExtractor(text, metadata) {
         if (!root.CTDocumentFields) {
@@ -435,9 +640,11 @@
         );
     }
 
-    /* ------------------------------------------------------------
-       EXECUTAR EXTRAÇÃO
-       ------------------------------------------------------------ */
+    /* ============================================================
+       EXECUTAR EXTRAÇÃO — DOCUMENTOS DA EMPRESA
+
+       Este fluxo é independente da leitura dos DUA.
+       ============================================================ */
 
     async function runExtraction() {
         const button = $("aiExtractDocument");
@@ -449,12 +656,14 @@
         isExtracting = true;
 
         button.disabled = true;
-        button.textContent = "A analisar certidão…";
+        button.textContent = "A analisar documento…";
 
         try {
             const result = await extractDocument(selectedFile);
 
-            const text = String(result.text || "").trim();
+            const text = String(
+                result.text || ""
+            ).trim();
 
             if (!text) {
                 throw new Error(
@@ -489,7 +698,8 @@
                     pageInfo =
                         ` · Foram lidas ${result.pages} de ${result.totalPages} páginas`;
                 } else {
-                    pageInfo = ` · ${result.pages} página(s)`;
+                    pageInfo =
+                        ` · ${result.pages} página(s)`;
                 }
             }
 
@@ -516,13 +726,13 @@
             isExtracting = false;
 
             button.disabled = !selectedFile;
-            button.textContent = "Extrair dados da certidão";
+            button.textContent = "Extrair dados do documento";
         }
     }
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        LIMPAR DOCUMENTO
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     function clearDocument() {
         const input = $("aiDocumentFile");
@@ -544,9 +754,9 @@
         );
     }
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        INICIALIZAÇÃO DA INTERFACE
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     function initialize() {
         if (initialized) return;
@@ -628,20 +838,34 @@
             runExtraction
         );
 
-        // Interface pública para integração com outros módulos.
+        /* --------------------------------------------------------
+           INTERFACE PÚBLICA
+
+           Outros módulos podem utilizar:
+
+           CTDocumentAI.getExtractedDocument()
+           CTDocumentAI.recognizeImageText(file, onProgress)
+           CTDocumentAI.clear()
+
+           O sidepanel.js utiliza recognizeImageText() para
+           reconhecer fotografias dos DUA.
+           -------------------------------------------------------- */
+
         root.CTDocumentAI = {
             getExtractedDocument: () =>
                 extractedDocument
                     ? { ...extractedDocument }
                     : null,
 
+            recognizeImageText,
+
             clear: clearDocument
         };
     }
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        ARRANQUE
-       ------------------------------------------------------------ */
+       ============================================================ */
 
     if (document.readyState === "loading") {
         document.addEventListener(

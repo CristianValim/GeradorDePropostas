@@ -1061,7 +1061,7 @@ async function importCRM({ silent = false, retries = 0 } = {}) {
 
 
 /* ============================================================
-   DADOS DO CONTRATO FLEET
+   DADOS DO CONTRATO FLEET E GESTÃO DAS VIATURAS
    ============================================================ */
 
 const CONTRACT_FIELDS = [
@@ -1075,7 +1075,46 @@ const CONTRACT_FIELDS = [
     "contractLocality"
 ];
 
-// Guarda os campos do contrato sem alterar os dados da proposta.
+// Lista de viaturas do contrato.
+let contractVehicles = [];
+
+
+/* ------------------------------------------------------------
+   GERAR IDENTIFICADOR DE VIATURA
+   ------------------------------------------------------------ */
+
+function createVehicleId() {
+    return (
+        "vehicle_" +
+        Date.now() +
+        "_" +
+        Math.random().toString(36).slice(2, 9)
+    );
+}
+
+
+/* ------------------------------------------------------------
+   CRIAR ESTRUTURA DE UMA VIATURA
+   ------------------------------------------------------------ */
+
+function createEmptyVehicle() {
+    return {
+        id: createVehicleId(),
+        matricula: "",
+        marca: "",
+        modelo: "",
+        ano: "",
+        cor: ""
+    };
+}
+
+
+/* ------------------------------------------------------------
+   GUARDAR DADOS DO CONTRATO
+
+   Os dados das viaturas ficam dentro de contractData.vehicles.
+   ------------------------------------------------------------ */
+
 async function saveContractData() {
     const { contractData = {} } =
         await chrome.storage.local.get("contractData");
@@ -1088,15 +1127,471 @@ async function saveContractData() {
         }
     });
 
+    contractData.vehicles = contractVehicles.map(vehicle => ({
+        id: vehicle.id,
+        matricula: vehicle.matricula || "",
+        marca: vehicle.marca || "",
+        modelo: vehicle.modelo || "",
+        ano: vehicle.ano || "",
+        cor: vehicle.cor || ""
+    }));
+
     await chrome.storage.local.set({ contractData });
 }
 
-// Recupera os dados guardados do contrato.
+
+/* ------------------------------------------------------------
+   ATUALIZAR UM CAMPO DE UMA VIATURA
+   ------------------------------------------------------------ */
+
+function updateVehicleField(vehicleId, field, value) {
+    const vehicle = contractVehicles.find(
+        item => item.id === vehicleId
+    );
+
+    if (!vehicle) return;
+
+    vehicle[field] = value;
+
+    saveContractData().catch(error => {
+        console.error(
+            "[Cartrack] Erro ao guardar viatura:",
+            error
+        );
+    });
+}
+
+
+/* ------------------------------------------------------------
+   EXTRAÇÃO DE CAMPOS DO DUA
+
+   Campos:
+   A   = Matrícula
+   B   = Data da primeira matrícula
+   D.1 = Marca
+   D.3 = Designação comercial / modelo
+   D.2 = Tipo, variante e versão (alternativa ao modelo)
+   R   = Cor
+   ------------------------------------------------------------ */
+
+function parseDuaText(text) {
+    const lines = String(text || "")
+        .replace(/\u0000/g, "")
+        .replace(/\r\n?/g, "\n")
+        .split("\n")
+        .map(line => line.replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+
+    const clean = value => String(value || "")
+        .replace(/^[\s:：\-–|]+/, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    function isFieldCode(line) {
+        return /^\s*(?:[A-Z]\s*[.)]?\s*|D\s*[.]?\s*[123]\s*[.)]?)\s*(?:[:：\-–]|\s)/i.test(line);
+    }
+
+    function readField(code, labels = []) {
+        const escapedCode = code.replace(".", "\\.");
+
+        const regex = new RegExp(
+            "^\\\\s*" + escapedCode +
+            "\\\\s*(?:[:：.\\\\-–)]\\\\s*)?(.*)$",
+            "i"
+        );
+
+        for (let i = 0; i < lines.length; i++) {
+            const match = lines[i].match(regex);
+
+            if (!match) continue;
+
+            let value = clean(match[1]);
+
+            // Remover a designação do campo, caso apareça na mesma linha.
+            if (labels.length) {
+                const labelRegex = new RegExp(
+                    "^(?:" + labels.join("|") + ")\\\\s*[:：\\\\-–]?\\\\s*",
+                    "i"
+                );
+
+                value = value.replace(labelRegex, "").trim();
+            }
+
+            if (value) {
+                return value;
+            }
+
+            // Alguns DUA apresentam o valor na linha seguinte.
+            for (
+                let j = i + 1;
+                j < Math.min(i + 3, lines.length);
+                j++
+            ) {
+                const next = clean(lines[j]);
+
+                if (!next || isFieldCode(next)) break;
+
+                const isOnlyLabel = labels.some(label =>
+                    new RegExp("^" + label + "$", "i").test(next)
+                );
+
+                if (isOnlyLabel) continue;
+
+                return next;
+            }
+        }
+
+        return "";
+    }
+
+    function normalizePlate(value) {
+        const compact = String(value || "")
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, "");
+
+        if (compact.length !== 6) return "";
+
+        if (!/[A-Z]/.test(compact) || !/\d/.test(compact)) {
+            return "";
+        }
+
+        return [
+            compact.slice(0, 2),
+            compact.slice(2, 4),
+            compact.slice(4, 6)
+        ].join("-");
+    }
+
+    function extractYear(value) {
+        const match = String(value || "").match(
+            /\b(?:\d{1,2}[\/.-]\d{1,2}[\/.-])?((?:19|20)\d{2})\b/
+        );
+
+        return match ? match[1] : "";
+    }
+
+    const rawPlate = readField(
+        "A",
+        ["matr[ií]cula", "registration"]
+    );
+
+    const rawDate = readField(
+        "B",
+        ["data da primeira matr[ií]cula", "data da matr[ií]cula"]
+    );
+
+    const brand = readField(
+        "D.1",
+        ["marca", "make"]
+    );
+
+    let model = readField(
+        "D.3",
+        ["designa[cç][aã]o comercial", "modelo"]
+    );
+
+    if (!model) {
+        model = readField(
+            "D.2",
+            ["tipo", "variante", "vers[aã]o"]
+        );
+    }
+
+    const color = readField(
+        "R",
+        ["cor", "colour", "color"]
+    );
+
+    return {
+        matricula: normalizePlate(rawPlate),
+        marca: brand,
+        modelo: model,
+        ano: extractYear(rawDate),
+        cor: color
+    };
+}
+
+
+/* ------------------------------------------------------------
+   IMPORTAR DUA PARA UMA VIATURA ESPECÍFICA
+   ------------------------------------------------------------ */
+
+async function importVehicleDua(vehicleId, file, statusElement, button) {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+        statusElement.textContent =
+            "Seleciona uma fotografia válida do DUA.";
+
+        statusElement.dataset.state = "error";
+        return;
+    }
+
+    if (file.size > 25 * 1024 * 1024) {
+        statusElement.textContent =
+            "A fotografia excede o limite de 25 MB.";
+
+        statusElement.dataset.state = "error";
+        return;
+    }
+
+    if (!root.CTDocumentAI?.recognizeImageText) {
+        statusElement.textContent =
+            "O módulo OCR não está disponível. Verifica o carregamento do Tesseract.";
+
+        statusElement.dataset.state = "error";
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = "A ler DUA...";
+
+    statusElement.textContent =
+        "A preparar o reconhecimento local...";
+
+    try {
+        const text = await root.CTDocumentAI.recognizeImageText(
+            file,
+            progress => {
+                statusElement.textContent = progress;
+            }
+        );
+
+        const candidates = parseDuaText(text);
+
+        const vehicle = contractVehicles.find(
+            item => item.id === vehicleId
+        );
+
+        if (!vehicle) {
+            throw new Error(
+                "A viatura selecionada já não existe."
+            );
+        }
+
+        let applied = 0;
+
+        Object.keys(candidates).forEach(field => {
+            const value = candidates[field];
+
+            if (!value) return;
+
+            vehicle[field] = value;
+            applied++;
+        });
+
+        if (applied > 0) {
+            renderContractVehicles();
+            await saveContractData();
+
+            statusElement.textContent =
+                `${applied} campo(s) identificado(s). Confirma os dados da viatura.`;
+
+            statusElement.dataset.state = "success";
+
+        } else {
+            statusElement.textContent =
+                "A fotografia foi lida, mas não foram identificados campos do DUA.";
+
+            statusElement.dataset.state = "error";
+        }
+
+    } catch (error) {
+        console.error(
+            "[Cartrack DUA] Erro na leitura:",
+            error
+        );
+
+        statusElement.textContent =
+            error.message || "Não foi possível ler o DUA.";
+
+        statusElement.dataset.state = "error";
+
+    } finally {
+        button.disabled = false;
+        button.textContent = "Importar fotografia do DUA";
+    }
+}
+
+
+/* ------------------------------------------------------------
+   DESENHAR AS VIATURAS
+   ------------------------------------------------------------ */
+
+function renderContractVehicles() {
+    const host = $("contractVehicles");
+
+    if (!host) return;
+
+    host.replaceChildren();
+
+    if (!contractVehicles.length) {
+        const empty = document.createElement("p");
+
+        empty.className = "empty-message";
+        empty.textContent =
+            "Ainda não existem viaturas adicionadas.";
+
+        host.appendChild(empty);
+        return;
+    }
+
+    const definitions = [
+        ["matricula", "Matrícula", "Ex.: 12-AB-34"],
+        ["marca", "Marca", "Ex.: Renault"],
+        ["modelo", "Modelo", "Ex.: Clio"],
+        ["ano", "Ano", "Ex.: 2022"],
+        ["cor", "Cor", "Ex.: Branco"]
+    ];
+
+    contractVehicles.forEach((vehicle, index) => {
+        const card = document.createElement("div");
+
+        card.className = "vehicle-card";
+
+        const header = document.createElement("div");
+        header.className = "vehicle-header";
+
+        const title = document.createElement("h3");
+        title.textContent = `Viatura ${index + 1}`;
+
+        const remove = document.createElement("button");
+
+        remove.type = "button";
+        remove.className = "secondary";
+        remove.textContent = "Remover";
+
+        remove.addEventListener("click", async () => {
+            contractVehicles = contractVehicles.filter(
+                item => item.id !== vehicle.id
+            );
+
+            renderContractVehicles();
+            await saveContractData();
+        });
+
+        header.append(title, remove);
+        card.appendChild(header);
+
+        definitions.forEach(([field, labelText, placeholder]) => {
+            const label = document.createElement("label");
+
+            label.textContent = labelText;
+
+            const input = document.createElement("input");
+
+            input.type = "text";
+            input.placeholder = placeholder;
+            input.value = vehicle[field] || "";
+
+            input.autocomplete = "off";
+
+            input.addEventListener("input", () => {
+                updateVehicleField(
+                    vehicle.id,
+                    field,
+                    input.value
+                );
+            });
+
+            label.appendChild(input);
+            card.appendChild(label);
+        });
+
+        // Importação individual da fotografia do DUA.
+        const importTitle = document.createElement("h4");
+
+        importTitle.textContent = "Importar DUA";
+        card.appendChild(importTitle);
+
+        const fileInput = document.createElement("input");
+
+        fileInput.type = "file";
+        fileInput.accept = "image/*";
+        fileInput.setAttribute(
+            "aria-label",
+            `Fotografia do DUA da viatura ${index + 1}`
+        );
+
+        const importButton = document.createElement("button");
+
+        importButton.type = "button";
+        importButton.className = "secondary";
+        importButton.textContent = "Importar fotografia do DUA";
+
+        importButton.disabled = true;
+
+        const duaStatus = document.createElement("div");
+
+        duaStatus.className = "status";
+        duaStatus.setAttribute("role", "status");
+        duaStatus.setAttribute("aria-live", "polite");
+        duaStatus.textContent =
+            "Seleciona uma fotografia do DUA.";
+
+        fileInput.addEventListener("change", () => {
+            const file = fileInput.files?.[0];
+
+            importButton.disabled = !file;
+
+            duaStatus.textContent = file
+                ? `Fotografia selecionada: ${file.name}`
+                : "Seleciona uma fotografia do DUA.";
+        });
+
+        importButton.addEventListener("click", async () => {
+            const file = fileInput.files?.[0];
+
+            await importVehicleDua(
+                vehicle.id,
+                file,
+                duaStatus,
+                importButton
+            );
+        });
+
+        card.append(
+            fileInput,
+            importButton,
+            duaStatus
+        );
+
+        host.appendChild(card);
+    });
+}
+
+
+/* ------------------------------------------------------------
+   ADICIONAR VIATURA
+   ------------------------------------------------------------ */
+
+function addContractVehicle() {
+    contractVehicles.push(createEmptyVehicle());
+
+    renderContractVehicles();
+
+    saveContractData().catch(error => {
+        console.error(
+            "[Cartrack] Erro ao guardar nova viatura:",
+            error
+        );
+    });
+}
+
+
+/* ------------------------------------------------------------
+   RESTAURAR DADOS DO CONTRATO
+   ------------------------------------------------------------ */
+
 async function restoreContractData() {
     const { contractData } =
         await chrome.storage.local.get("contractData");
 
-    if (!contractData) return;
+    if (!contractData) {
+        contractVehicles = [];
+        renderContractVehicles();
+        return;
+    }
 
     CONTRACT_FIELDS.forEach(id => {
         const element = $(id);
@@ -1105,10 +1600,25 @@ async function restoreContractData() {
             element.value = contractData[id];
         }
     });
+
+    contractVehicles = Array.isArray(contractData.vehicles)
+        ? contractData.vehicles.map(vehicle => ({
+            id: vehicle.id || createVehicleId(),
+            matricula: vehicle.matricula || "",
+            marca: vehicle.marca || "",
+            modelo: vehicle.modelo || "",
+            ano: vehicle.ano || "",
+            cor: vehicle.cor || ""
+        }))
+        : [];
+
+    renderContractVehicles();
 }
-/* ============================================================
-   LIMPAR DADOS DO CONTRATO FLEET
-   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   LIMPAR DADOS DO CONTRATO
+   ------------------------------------------------------------ */
 
 async function clearContractData() {
     const confirmed = confirm(
@@ -1125,6 +1635,10 @@ async function clearContractData() {
         }
     });
 
+    contractVehicles = [];
+
+    renderContractVehicles();
+
     await chrome.storage.local.remove([
         "contractData",
         "contractLeadId"
@@ -1137,6 +1651,11 @@ async function clearContractData() {
     }
 }
 
+
+/* ------------------------------------------------------------
+   EVENTOS DOS DADOS DO CONTRATO
+   ------------------------------------------------------------ */
+
 if ($("clearContract")) {
     $("clearContract").addEventListener(
         "click",
@@ -1144,14 +1663,23 @@ if ($("clearContract")) {
     );
 }
 
-
-// Evento do botão.
-if ($("clearContract")) {
-    $("clearContract").addEventListener(
+if ($("addContractVehicle")) {
+    $("addContractVehicle").addEventListener(
         "click",
-        clearContractData
+        addContractVehicle
     );
 }
+
+// Guardar automaticamente alterações nos campos do cliente.
+CONTRACT_FIELDS.forEach(id => {
+    const element = $(id);
+
+    if (element) {
+        element.addEventListener("input", () => {
+            saveContractData().catch(console.error);
+        });
+    }
+});
 
 /* ============================================================
    IMPORTAÇÃO DO CRM PARA O CONTRATO FLEET
