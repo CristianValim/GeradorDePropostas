@@ -1070,14 +1070,9 @@ const CONTRACT_FIELDS = [
     "contractContact",
     "contractPhone",
     "contractEmail",
-    "contractAddressSearch",
     "contractStreet",
     "contractPostalCode",
-    "contractLocality",
-    "contractParish",
-    "contractMunicipality",
-    "contractDistrict",
-    "contractCountry"
+    "contractLocality"
 ];
 
 // Guarda os campos do contrato sem alterar os dados da proposta.
@@ -1122,7 +1117,6 @@ async function clearContractData() {
 
     if (!confirmed) return;
 
-    // Limpa todos os campos do contrato.
     CONTRACT_FIELDS.forEach(id => {
         const element = $(id);
 
@@ -1131,36 +1125,25 @@ async function clearContractData() {
         }
     });
 
-    // Limpa também os resultados da pesquisa de moradas.
-    geoapifyAddressResults = [];
-
-    const addressSelect = $("contractAddressSelect");
-
-    if (addressSelect) {
-        addressSelect.replaceChildren(
-            new Option("Selecione uma morada...", "")
-        );
-    }
-
-    const addressResults = $("contractAddressResults");
-
-    if (addressResults) {
-        addressResults.hidden = true;
-    }
-
-    // Remove os dados guardados do contrato.
     await chrome.storage.local.remove([
         "contractData",
         "contractLeadId"
     ]);
 
-    // Atualiza o estado.
     const status = $("contractStatus");
 
     if (status) {
         status.textContent = "Dados do contrato limpos.";
     }
 }
+
+if ($("clearContract")) {
+    $("clearContract").addEventListener(
+        "click",
+        clearContractData
+    );
+}
+
 
 // Evento do botão.
 if ($("clearContract")) {
@@ -1169,212 +1152,6 @@ if ($("clearContract")) {
         clearContractData
     );
 }
-/* =========================================================
-   PESQUISA DE MORADAS — GEOAPIFY
-   Utilizada no contrato Fleet
-========================================================= */
-
-const GEOAPIFY_API_KEY = "b0a25f539fa84f26a9de74f05c014268";
-
-let geoapifyAddressResults = [];
-
-
-async function searchContractAddress() {
-    const input = $("contractAddressSearch");
-    const button = $("searchContractAddress");
-    const select = $("contractAddressSelect");
-    const resultsContainer = $("contractAddressResults");
-    const status = $("contractStatus");
-
-    if (!input || !button || !select || !resultsContainer) return;
-
-    const query = input.value.trim();
-
-    if (query.length < 3) {
-        resultsContainer.hidden = true;
-
-        if (status) {
-            status.textContent =
-                "Introduza pelo menos 3 caracteres para pesquisar.";
-        }
-
-        return;
-    }
-
-    button.disabled = true;
-    button.textContent = "A pesquisar...";
-
-    resultsContainer.hidden = false;
-    select.replaceChildren(
-        new Option("A procurar moradas...", "")
-    );
-
-    try {
-        const params = new URLSearchParams({
-            text: query,
-            filter: "countrycode:pt",
-            format: "json",
-            lang: "pt",
-            limit: "8",
-            apiKey: GEOAPIFY_API_KEY
-        });
-
-        const response = await fetch(
-            `https://api.geoapify.com/v1/geocode/autocomplete?${params}`
-        );
-
-        if (!response.ok) {
-            throw new Error(`Erro HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        geoapifyAddressResults = data.results || [];
-
-        select.replaceChildren();
-
-        if (!geoapifyAddressResults.length) {
-            select.add(
-                new Option("Nenhuma morada encontrada", "")
-            );
-
-            if (status) {
-                status.textContent =
-                    "Não foram encontradas moradas. Experimente outra pesquisa.";
-            }
-
-            return;
-        }
-
-        select.add(
-            new Option("Selecione uma morada...", "")
-        );
-
-        geoapifyAddressResults.forEach((result, index) => {
-            const address =
-                result.formatted ||
-                result.address_line1 ||
-                "Morada sem descrição";
-
-            select.add(
-                new Option(address, String(index))
-            );
-        });
-
-        // Torna visível a área que contém as opções.
-        resultsContainer.hidden = false;
-
-        // Seleciona automaticamente a primeira opção como destaque visual.
-        select.focus();
-
-        if (status) {
-            status.textContent =
-                `${geoapifyAddressResults.length} resultado(s) encontrado(s). Selecione a morada pretendida.`;
-        }
-
-    } catch (error) {
-        console.error("Erro na pesquisa de moradas:", error);
-
-        select.replaceChildren(
-            new Option("Erro ao pesquisar moradas", "")
-        );
-
-        resultsContainer.hidden = false;
-
-        if (status) {
-            status.textContent =
-                "Não foi possível pesquisar moradas. Verifique a ligação ou a configuração da API.";
-        }
-
-    } finally {
-        button.disabled = false;
-        button.textContent = "Localizar morada";
-    }
-}
-
-
-/* Preencher os campos quando uma morada é selecionada */
-function selectContractAddress() {
-    const select = $("contractAddressSelect");
-
-    if (!select) return;
-
-    const index = select.value;
-
-    if (index === "") return;
-
-    const result = geoapifyAddressResults[Number(index)];
-
-    if (!result) return;
-
-    const address = result;
-
-    const street = [
-        address.street,
-        address.housenumber
-    ].filter(Boolean).join(", ");
-
-    const locality =
-        address.city ||
-        address.town ||
-        address.village ||
-        address.suburb ||
-        "";
-
-    const fields = {
-        contractStreet: street || address.address_line1 || "",
-        contractPostalCode: address.postcode || "",
-        contractLocality: locality,
-        contractMunicipality: address.county || "",
-        contractDistrict: address.state || "",
-        contractCountry: address.country || "Portugal"
-    };
-
-    Object.entries(fields).forEach(([id, value]) => {
-        const field = $(id);
-        if (field && value) field.value = value;
-    });
-
-    // A Geoapify nem sempre fornece a freguesia de forma estruturada.
-    // Não vamos preencher este campo com dados administrativos incertos.
-
-    if (typeof saveContractData === "function") {
-        saveContractData();
-    }
-
-    const status = $("contractStatus");
-    if (status) {
-        status.textContent = "Morada selecionada. Confirme os dados antes de gerar o contrato.";
-    }
-}
-
-/* Eventos da pesquisa */
-if ($("searchContractAddress")) {
-    $("searchContractAddress").addEventListener("click", searchContractAddress);
-}
-
-if ($("contractAddressSearch")) {
-    $("contractAddressSearch").addEventListener("keydown", event => {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            searchContractAddress();
-        }
-    });
-}
-
-if ($("contractAddressSelect")) {
-    $("contractAddressSelect").addEventListener("change", selectContractAddress);
-}
-// Regista a gravação automática dos campos que existem no HTML.
-CONTRACT_FIELDS.forEach(id => {
-    const element = $(id);
-
-    if (element) {
-        element.addEventListener("input", saveContractData);
-        element.addEventListener("change", saveContractData);
-    }
-});
-
 
 /* ============================================================
    IMPORTAÇÃO DO CRM PARA O CONTRATO FLEET

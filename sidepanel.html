@@ -564,118 +564,43 @@
             </section>
 
 
-            <!-- ==============================================
-                MORADA E LOCALIZAÇÃO
-                ============================================== -->
 
-            <section class="panel">
+<!-- ==============================================
+     MORADA DA EMPRESA
+     ============================================== -->
 
-                <h2>Morada da empresa</h2>
+<section class="panel">
 
-                <p class="small">
-                    Pesquisa pelo nome da rua e número.
-                    O sistema tentará identificar automaticamente o
-                    código postal, localidade, concelho e distrito.
-                </p>
+    <h2>Morada da empresa</h2>
 
-                <label>
-                    Pesquisar morada
+    <label>
+        Morada / Rua
 
-                    <input
-                        id="contractAddressSearch"
-                        type="text"
-                        placeholder="Ex.: Rua da Liberdade, 25, Lisboa"
-                        autocomplete="street-address"
-                    >
-                </label>
+        <input
+            id="contractStreet"
+            placeholder="Rua, número da porta e apartamento"
+        >
+    </label>
 
-                <button
-                    id="searchContractAddress"
-                    class="secondary"
-                    type="button"
-                >
-                    Localizar morada
-                </button>
+    <label>
+        Código postal
 
-                <!-- Resultados da pesquisa de moradas. -->
-                <div id="contractAddressResults" hidden>
+        <input
+            id="contractPostalCode"
+            placeholder="0000-000"
+    >
+    </label>
 
-                    <label>
-                        Selecionar morada encontrada
+    <label>
+        Localidade
 
-                        <select id="contractAddressSelect">
-                            <option value="">
-                                Selecione uma morada...
-                            </option>
-                        </select>
-                    </label>
+        <input
+            id="contractLocality"
+        placeholder="Localidade"
+        >
+    </label>
 
-                </div>
-
-                <label>
-                    Morada / Rua
-
-                    <input
-                        id="contractStreet"
-                        placeholder="Rua, avenida, número e porta"
-                    >
-                </label>
-
-                <label>
-                    Código postal
-
-                    <input
-                        id="contractPostalCode"
-                        placeholder="0000-000"
-                    >
-                </label>
-
-                <label>
-                    Localidade
-
-                    <input
-                        id="contractLocality"
-                        placeholder="Localidade"
-                    >
-                </label>
-
-                <label>
-                    Freguesia
-
-                    <input
-                        id="contractParish"
-                        placeholder="Freguesia"
-                    >
-                </label>
-
-                <label>
-                    Concelho
-
-                    <input
-                        id="contractMunicipality"
-                        placeholder="Concelho"
-                    >
-                </label>
-
-                <label>
-                    Distrito
-
-                    <input
-                        id="contractDistrict"
-                        placeholder="Distrito"
-                    >
-                </label>
-
-                <label>
-                    País
-
-                    <input
-                        id="contractCountry"
-                        value="Portugal"
-                    >
-                </label>
-
-            </section>
+</section>
 
 
             <!-- ==============================================
