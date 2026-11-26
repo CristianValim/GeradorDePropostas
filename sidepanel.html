@@ -11,7 +11,7 @@
     <title>Cartrack | Gerador de Documentos</title>
 
     <!-- Folha de estilos principal da extensão. -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="proposal/ui/preview.css">
 </head>
 
 <body>
@@ -732,22 +732,22 @@
     <script src="lib/jszip.min.js"></script>
 
     <!-- Núcleo partilhado: modelos, preços, serviços e validações. -->
-    <script src="core.js"></script>
+    <script src="proposal/core/core.js"></script>
 
     <!-- Gestão e armazenamento dos dados das propostas. -->
-    <script src="store.js"></script>
+    <script src="proposal/storage/store.js"></script>
 
     <!-- Geração e processamento dos documentos Word. -->
-    <script src="docgen.js"></script>
+    <script src="proposal/core/docgen.js"></script>
 
     <!-- Novo módulo de importação e extração documental -->
-    <script src="document-ai.js"></script>
+    <script src="proposal/documents/document-ai.js"></script>
 
     <!-- Etapa 2: identificação dos dados -->
-    <script src="document-fields.js"></script>
+    <script src="proposal/documents/document-fields.js"></script>
     
     <!-- Lógica principal do painel lateral. -->
-    <script src="sidepanel.js"></script>
+    <script src="proposal/ui/sidepanel.js"></script>
 
 </body>
 </html>
