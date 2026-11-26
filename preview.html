@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-PT">
+
+<head>
+    <!-- Configuração da codificação e da apresentação em dispositivos. -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Título apresentado no separador do navegador. -->
+    <title>Cartrack | Pré-visualização</title>
+
+    <!-- Folha de estilos da pré-visualização. -->
+    <link rel="stylesheet" href="preview.css">
+</head>
+
+<body>
+
+    <!-- ==================================================
+         BARRA SUPERIOR
+         ================================================== -->
+    <div class="bar">
+
+        <!-- Identificação da marca e modelo da proposta. -->
+        <div>
+            <b>CARTRACK</b>
+            · Pré-visualização da proposta
+            <span id="tplName"></span>
+        </div>
+
+        <!-- Estado de carregamento e atualização da pré-visualização. -->
+        <div>
+            <span class="live" id="live">A carregar…</span>
+        </div>
+
+    </div>
+
+
+    <!-- ==================================================
+         AVISOS
+         ================================================== -->
+
+    <!-- Área destinada a mensagens de aviso ou erro. -->
+    <div class="warn" id="warn" hidden></div>
+
+    <!-- Informação sobre as limitações da pré-visualização. -->
+    <div class="approx">
+        Pré-visualização aproximada: usa o mesmo texto e tabelas do Word gerado,
+        mas a paginação, a imagem da capa e os logótipos só aparecem no documento final.
+    </div>
+
+
+    <!-- ==================================================
+         ÁREA DA PROPOSTA
+         ================================================== -->
+
+    <!-- O conteúdo da proposta é inserido dinamicamente pelo preview.js. -->
+    <main id="out"></main>
+
+
+    <!-- ==================================================
+         BIBLIOTECAS E SCRIPTS
+         ================================================== -->
+
+    <!-- Biblioteca utilizada para ler e processar ficheiros DOCX. -->
+    <script src="lib/jszip.min.js"></script>
+
+    <!-- Núcleo partilhado: preços, modelos, serviços e validações. -->
+    <script src="core.js"></script>
+
+    <!-- Gestão e armazenamento dos dados da proposta. -->
+    <script src="store.js"></script>
+
+    <!-- Geração e processamento dos documentos Word. -->
+    <script src="docgen.js"></script>
+
+    <!-- Renderização e atualização da pré-visualização. -->
+    <script src="preview.js"></script>
+
+</body>
+</html>

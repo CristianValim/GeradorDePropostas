@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Cartrack Proposal Generator",
+  "version": "1.9.0",
+  "description": "Gerador de propostas Cartrack com configuração de serviços e pré-visualização.",
+  "permissions": [
+    "storage",
+    "downloads",
+    "sidePanel",
+    "scripting"
+  ],
+"icons": {
+  "16": "icons/icon16.png",
+  "32": "icons/icon32.png",
+  "48": "icons/icon48.png",
+  "128": "icons/icon128.png"
+},
+"action": {
+  "default_title": "Cartrack Proposal Generator",
+  "default_icon": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png"
+  }
+},
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://crm-pt.karooooo.com/*",
+    "https://api.geoapify.com/*"
+  ]
+}

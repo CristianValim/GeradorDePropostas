@@ -1,0 +1,753 @@
+
+<!doctype html>
+<html lang="pt-PT">
+
+<head>
+    <!-- Configuração da codificação e da apresentação em dispositivos. -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Título apresentado no separador do navegador. -->
+    <title>Cartrack | Gerador de Documentos</title>
+
+    <!-- Folha de estilos principal da extensão. -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ==================================================
+         CABEÇALHO
+         ================================================== -->
+    <header>
+
+        <!-- Logótipo e botão de configuração da assinatura. -->
+        <div class="brand-row">
+
+            <div class="brand">CARTRACK</div>
+
+            <!-- Abre ou fecha a edição dos dados da assinatura. -->
+            <button
+                id="toggleProfile"
+                class="settings-btn"
+                type="button"
+                title="Editar assinatura"
+                aria-label="Editar assinatura"
+            >⚙</button>
+
+        </div>
+
+        <!-- Identificação da ferramenta. -->
+        <div class="sub">GERADOR DE DOCUMENTOS</div>
+
+    </header>
+
+
+    <!-- ==================================================
+         CONTEÚDO PRINCIPAL
+         ================================================== -->
+    <main>
+
+        <!-- ==============================================
+             CONFIGURAÇÃO DA ASSINATURA
+             ============================================== -->
+
+        <!-- Painel oculto que permite editar os dados do utilizador. -->
+        <section
+            id="profileEditor"
+            class="panel profile-panel"
+            hidden
+        >
+
+            <h2>Editar assinatura</h2>
+
+            <!-- Nome utilizado na assinatura dos documentos. -->
+            <label>
+                Nome completo
+                <input
+                    id="profileName"
+                    type="text"
+                    placeholder="Nome completo"
+                >
+            </label>
+
+            <!-- Número de telemóvel utilizado na assinatura. -->
+            <label>
+                Telemóvel
+                <input
+                    id="profilePhone"
+                    type="tel"
+                    placeholder="Número de telemóvel"
+                >
+            </label>
+
+            <!-- Guarda os dados atualizados da assinatura. -->
+            <button
+                id="saveProfile"
+                class="secondary"
+                type="button"
+            >
+                Guardar assinatura
+            </button>
+
+        </section>
+
+
+        <!-- ==============================================
+             NAVEGAÇÃO PRINCIPAL
+             ============================================== -->
+
+        <!-- Alterna entre o gerador de propostas e contratos. -->
+        <nav
+            class="main-tabs"
+            aria-label="Tipo de documento"
+        >
+
+            <button
+                id="tabProposals"
+                class="main-tab active"
+                type="button"
+                aria-selected="true"
+            >
+                <span>Propostas</span>
+            </button>
+
+            <button
+                id="tabContracts"
+                class="main-tab"
+                type="button"
+                aria-selected="false"
+            >
+                <span>Contratos</span>
+            </button>
+
+        </nav>
+
+
+        <!-- ==================================================
+             ABA DE PROPOSTAS
+             ================================================== -->
+        <div id="proposalsPanel">
+
+            <!-- ==============================================
+                 INFORMAÇÃO INICIAL
+                 ============================================== -->
+
+            <!-- Explicação sobre o funcionamento do gerador. -->
+            <p class="hint">
+                Escolhe o modelo, preenche os dados do cliente e configura os serviços.
+                Os dados ficam guardados automaticamente enquanto trabalhas no CRM.
+            </p>
+
+
+            <!-- ==============================================
+                 MODELO DE PROPOSTA
+                 ============================================== -->
+
+            <section class="panel">
+
+                <h2>Modelo de proposta</h2>
+
+                <!-- Lista de modelos disponíveis, preenchida pelo JavaScript. -->
+                <label>
+                    Tipo de proposta
+                    <select id="template"></select>
+                </label>
+
+            </section>
+
+
+            <!-- ==============================================
+                 DADOS DO CLIENTE
+                 ============================================== -->
+
+            <section class="panel">
+
+                <h2>Dados do cliente</h2>
+
+                <!-- Importa os dados disponíveis na aba do CRM. -->
+                <button
+                    id="importCrm"
+                    class="secondary"
+                    type="button"
+                >
+                    ↻ Importar da aba do CRM
+                </button>
+
+                <!-- Nome da empresa ou do cliente particular. -->
+                <label id="companyLabel">
+                    Nome da empresa
+                    <input
+                        id="company"
+                        placeholder="Nome da empresa"
+                    >
+                </label>
+
+                <!--
+                    Permite definir o tipo de cliente nos modelos Vision.
+                    A opção automática identifica empresas através da designação.
+                -->
+                <label id="clientTypeLabel" hidden>
+                    Tipo de cliente
+                    <select id="clientType">
+                        <option value="auto">Automático (Lda/SA = empresa)</option>
+                        <option value="empresa">Empresa</option>
+                        <option value="particular">Particular</option>
+                    </select>
+                </label>
+
+                <!-- Informação complementar sobre o tipo de cliente. -->
+                <div class="small" id="clientTypeHint" hidden></div>
+
+                <!-- Tratamento automático da saudação. -->
+                <input
+                    type="hidden"
+                    id="greeting"
+                    value="auto"
+                >
+
+                <!-- Número de identificação fiscal do cliente. -->
+                <label id="nifLabel">
+                    NIF
+                    <input
+                        id="nif"
+                        inputmode="numeric"
+                        placeholder="Número de contribuinte"
+                    >
+                </label>
+
+                <!-- Nome da pessoa de contacto. -->
+                <label id="contactLabel">
+                    Contacto
+                    <input
+                        id="contact"
+                        placeholder="Nome do contacto"
+                    >
+                </label>
+
+                <!-- Data de emissão da proposta. -->
+                <label>
+                    Data
+                    <input
+                        id="date"
+                        placeholder="dd/mm/aaaa"
+                    >
+                </label>
+
+                <!-- Quantidade de viaturas abrangidas pela proposta. -->
+                <label id="countLabel">
+                    Quantidade de viaturas
+                    <input
+                        id="vehicleCount"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="Ex.: 5"
+                    >
+                </label>
+
+            </section>
+
+
+            <!-- ==============================================
+                 SERVIÇOS E PREÇOS
+                 ============================================== -->
+
+            <section class="panel">
+
+                <h2>Serviços e preços</h2>
+
+                <!-- Instruções para editar e organizar os serviços. -->
+                <p class="small">
+                    Podes alterar, reordenar (▲ ▼), remover ou adicionar linhas e sub-pontos.
+                    Os preços são formatados automaticamente (ex.: 9,00 €).
+                    A quantidade aparece uma só vez na tabela (exceto em Máquinas).
+                </p>
+
+                <!-- Cabeçalho das colunas da tabela de serviços. -->
+                <div class="table-head">
+
+                    <span>Serviço</span>
+                    <span id="thMonthly">Mensal / viatura</span>
+                    <span id="thUnit">Preço unidade</span>
+                    <span>Ordem</span>
+                    <span></span>
+
+                </div>
+
+                <!-- Área onde o JavaScript apresenta as linhas de serviços. -->
+                <div id="services"></div>
+
+                <!-- Menu de serviços predefinidos. -->
+                <label id="presetLabel">
+                    Adicionar serviço pronto
+
+                    <select id="servicePreset">
+                        <option value="">Seleciona um serviço…</option>
+                        <option value="immobilizer">
+                            Imobilização remota — 0,00 € mensal / 100,00 € instalação
+                        </option>
+                        <option value="driverid">
+                            Driver ID — Identificação dos condutores
+                        </option>
+                        <option value="starter">
+                            Inibição de arranque — requer Driver ID
+                        </option>
+                    </select>
+                </label>
+
+                <!-- Adiciona uma linha de serviço personalizada. -->
+                <button
+                    id="addRow"
+                    class="secondary"
+                    type="button"
+                >
+                    ＋ Adicionar linha personalizada
+                </button>
+
+            </section>
+
+
+            <!-- ==============================================
+                 CONDIÇÕES DO CONTRATO
+                 ============================================== -->
+
+            <section class="panel">
+
+                <h2>Condições do contrato</h2>
+
+                <!-- Define o período inicial de fidelização. -->
+                <label>
+                    Período inicial de fidelização
+
+                    <select id="term">
+                        <option value="24">24 meses</option>
+                        <option value="36">36 meses</option>
+                    </select>
+                </label>
+
+            </section>
+
+
+            <!-- ==============================================
+                 ESTADO E AÇÕES DAS PROPOSTAS
+                 ============================================== -->
+
+            <!-- Mensagens de estado, gravação e validação. -->
+            <div class="status" id="status">
+                Os dados são guardados automaticamente neste Chrome.
+            </div>
+
+            <!-- Abre a pré-visualização da proposta. -->
+            <button
+                id="preview"
+                class="secondary"
+            >
+                👁 Pré-visualizar proposta
+            </button>
+
+            <!-- Gera o documento Word preenchido. -->
+            <button id="generate">
+                Gerar documento Word preenchido
+            </button>
+
+            <!-- Limpa os dados da proposta atual. -->
+            <button
+                class="secondary"
+                id="clear"
+            >
+                Limpar proposta
+            </button>
+
+        </div>
+        <!-- FIM DA ABA DE PROPOSTAS -->
+
+
+        <!-- ==================================================
+             ABA DE CONTRATOS
+             ================================================== -->
+        <div id="contractsPanel" hidden>
+
+            <p class="hint">
+                Preenche os dados do cliente e das viaturas para gerar
+                automaticamente o contrato de Gestão de Frotas.
+            </p>
+
+
+            <!-- ==============================================
+                MODELO DE CONTRATO
+                ============================================== -->
+
+            <section class="panel">
+
+                <h2>Modelo de contrato</h2>
+
+                <label for="contractTemplate">
+                    Tipo de contrato
+
+                    <select id="contractTemplate">
+                        <option value="fleet">
+                            Contrato de Gestão de Frotas (Fleet)
+                        </option>
+                    </select>
+                </label>
+
+            </section>
+
+<!-- ==============================================
+    IMPORTAÇÃO DE DOCUMENTOS
+    ============================================== -->
+
+<section class="panel document-ai-panel">
+
+    <h2>Importar dados de um documento</h2>
+
+    <p class="small">
+        Seleciona um PDF, imagem ou documento Word.
+        A leitura é processada localmente nesta extensão.
+    </p>
+
+    <label for="aiDocumentFile">
+        Documento do cliente
+
+        <input
+            id="aiDocumentFile"
+            type="file"
+            accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,image/*"
+        >
+    </label>
+
+    <button
+        id="aiExtractDocument"
+        class="secondary"
+        type="button"
+        disabled
+    >
+        Extrair texto do documento
+    </button>
+
+    <div
+        id="aiDocumentStatus"
+        class="status"
+        role="status"
+        aria-live="polite"
+    >
+        Seleciona um documento para começar.
+    </div>
+
+    <label for="aiExtractedText">
+        Texto extraído (pré-visualização)
+
+        <textarea
+            id="aiExtractedText"
+            rows="8"
+            readonly
+            placeholder="O texto extraído será apresentado aqui para revisão."
+        ></textarea>
+    </label>
+
+    <p class="small">
+        Nesta primeira etapa, o sistema apenas extrai e apresenta
+        o texto. A interpretação por IA e o preenchimento dos
+        campos serão acrescentados posteriormente.
+    </p>
+
+</section>
+
+<!-- ==============================================
+     REVISÃO DOS DADOS IDENTIFICADOS
+     ============================================== -->
+
+<section
+    class="panel"
+    id="aiFieldReviewPanel"
+    hidden
+>
+    <h2>Dados identificados no documento</h2>
+
+    <p class="small">
+        Confirma os dados encontrados antes de os transferir
+        para o contrato. Podes editar os valores e escolher
+        quais pretendes aplicar.
+    </p>
+
+    <div id="aiFieldReview"></div>
+
+    <button
+        id="aiApplyFields"
+        type="button"
+        disabled
+    >
+        Aplicar dados ao contrato
+    </button>
+
+    <div
+        id="aiFieldReviewStatus"
+        class="status"
+        role="status"
+        aria-live="polite"
+    >
+        Ainda não existem dados identificados.
+    </div>
+</section>
+
+
+            <!-- ==============================================
+                DADOS DO CLIENTE
+                ============================================== -->
+
+            <section class="panel">
+
+                <h2>Dados do cliente</h2>
+
+                <p class="small">
+                    Importa os dados disponíveis no CRM ou preenche
+                    manualmente os campos em falta.
+                </p>
+
+                <button
+                    id="importContractCrm"
+                    class="secondary"
+                    type="button"
+                >
+                    ↻ Importar dados do CRM
+                </button>
+
+                <label>
+                    Nome da empresa
+
+                    <input
+                        id="contractCompany"
+                        placeholder="Nome da empresa"
+                    >
+                </label>
+
+                <label>
+                    NIF
+
+                    <input
+                        id="contractNif"
+                        inputmode="numeric"
+                        placeholder="Número de contribuinte"
+                    >
+                </label>
+
+                <label>
+                    Pessoa de contacto
+
+                    <input
+                        id="contractContact"
+                        placeholder="Nome do contacto"
+                    >
+                </label>
+
+                <label>
+                    Telefone
+
+                    <input
+                        id="contractPhone"
+                        type="tel"
+                        placeholder="Número de telefone"
+                    >
+                </label>
+
+                <label>
+                    E-mail
+
+                    <input
+                        id="contractEmail"
+                        type="email"
+                        placeholder="E-mail"
+                    >
+                </label>
+
+            </section>
+
+
+            <!-- ==============================================
+                MORADA E LOCALIZAÇÃO
+                ============================================== -->
+
+            <section class="panel">
+
+                <h2>Morada da empresa</h2>
+
+                <p class="small">
+                    Pesquisa pelo nome da rua e número.
+                    O sistema tentará identificar automaticamente o
+                    código postal, localidade, concelho e distrito.
+                </p>
+
+                <label>
+                    Pesquisar morada
+
+                    <input
+                        id="contractAddressSearch"
+                        type="text"
+                        placeholder="Ex.: Rua da Liberdade, 25, Lisboa"
+                        autocomplete="street-address"
+                    >
+                </label>
+
+                <button
+                    id="searchContractAddress"
+                    class="secondary"
+                    type="button"
+                >
+                    Localizar morada
+                </button>
+
+                <!-- Resultados da pesquisa de moradas. -->
+                <div id="contractAddressResults" hidden>
+
+                    <label>
+                        Selecionar morada encontrada
+
+                        <select id="contractAddressSelect">
+                            <option value="">
+                                Selecione uma morada...
+                            </option>
+                        </select>
+                    </label>
+
+                </div>
+
+                <label>
+                    Morada / Rua
+
+                    <input
+                        id="contractStreet"
+                        placeholder="Rua, avenida, número e porta"
+                    >
+                </label>
+
+                <label>
+                    Código postal
+
+                    <input
+                        id="contractPostalCode"
+                        placeholder="0000-000"
+                    >
+                </label>
+
+                <label>
+                    Localidade
+
+                    <input
+                        id="contractLocality"
+                        placeholder="Localidade"
+                    >
+                </label>
+
+                <label>
+                    Freguesia
+
+                    <input
+                        id="contractParish"
+                        placeholder="Freguesia"
+                    >
+                </label>
+
+                <label>
+                    Concelho
+
+                    <input
+                        id="contractMunicipality"
+                        placeholder="Concelho"
+                    >
+                </label>
+
+                <label>
+                    Distrito
+
+                    <input
+                        id="contractDistrict"
+                        placeholder="Distrito"
+                    >
+                </label>
+
+                <label>
+                    País
+
+                    <input
+                        id="contractCountry"
+                        value="Portugal"
+                    >
+                </label>
+
+            </section>
+
+
+            <!-- ==============================================
+                DADOS DAS VIATURAS
+                ============================================== -->
+
+            <section class="panel">
+
+                <h2>Viaturas</h2>
+
+                <p class="small">
+                    Adiciona as viaturas abrangidas pelo contrato.
+                </p>
+
+                <div id="contractVehicles">
+
+                    <p class="empty-message">
+                        Os campos das viaturas serão apresentados aqui.
+                    </p>
+
+                </div>
+
+            </section>
+
+
+            <!-- ==============================================
+                ESTADO E GERAÇÃO DO CONTRATO
+                ============================================== -->
+
+            <div class="status" id="contractStatus">
+                Importa os dados do CRM ou preenche os campos manualmente.
+            </div>
+            <button id="clearContract" class="secondary" type="button">
+                Limpar dados
+            </button>
+            <button
+                id="generateContract"
+                type="button"
+                disabled
+            >
+                Gerar contrato PDF
+            </button>
+
+        </div>
+        <!-- FIM DA ABA DE CONTRATOS -->
+    </main>
+
+
+    <!-- ==================================================
+         BIBLIOTECAS E SCRIPTS
+         ================================================== -->
+
+    <!-- Biblioteca utilizada para processar documentos DOCX. -->
+    <script src="lib/jszip.min.js"></script>
+
+    <!-- Núcleo partilhado: modelos, preços, serviços e validações. -->
+    <script src="core.js"></script>
+
+    <!-- Gestão e armazenamento dos dados das propostas. -->
+    <script src="store.js"></script>
+
+    <!-- Geração e processamento dos documentos Word. -->
+    <script src="docgen.js"></script>
+
+    <!-- Novo módulo de importação e extração documental -->
+    <script src="document-ai.js"></script>
+
+    <!-- Etapa 2: identificação dos dados -->
+    <script src="document-fields.js"></script>
+    
+    <!-- Lógica principal do painel lateral. -->
+    <script src="sidepanel.js"></script>
+
+</body>
+</html>

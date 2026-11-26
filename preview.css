@@ -1,0 +1,324 @@
+/* ==================================================
+   CARTRACK PROPOSAL GENERATOR
+   Estilos da pré-visualização das propostas
+   ================================================== */
+
+
+/* ==================================================
+   CONFIGURAÇÕES GERAIS
+   ================================================== */
+
+/* Garante que padding e border são incluídos nas dimensões. */
+* {
+    box-sizing: border-box;
+}
+
+/* Estilo base da página. */
+body {
+    margin: 0;
+    background: #e9ebed;
+    font: 14px Arial, sans-serif;
+    color: #222;
+}
+
+
+/* ==================================================
+   BARRA SUPERIOR
+   ================================================== */
+
+/* Barra fixa no topo durante a navegação. */
+.bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+
+    background: #fff;
+    border-bottom: 3px solid #f47735;
+    padding: 12px 24px;
+}
+
+/* Identificação da marca. */
+.bar b {
+    letter-spacing: 1px;
+}
+
+/* Indicador de estado da pré-visualização. */
+.live {
+    font-size: 12px;
+    color: #39734a;
+}
+
+/* Nome do modelo de proposta selecionado. */
+#tplName {
+    color: #e96725;
+    font-weight: bold;
+}
+
+
+/* ==================================================
+   AVISOS E INFORMAÇÕES
+   ================================================== */
+
+/* Caixa de aviso apresentada ao utilizador. */
+.warn {
+    max-width: 820px;
+    margin: 12px auto 0;
+    padding: 10px 14px;
+
+    background: #fff3e8;
+    border: 1px solid #f47735;
+    border-radius: 6px;
+
+    color: #8a3b0a;
+    font-size: 13px;
+}
+
+/* Informação complementar sobre valores aproximados. */
+.approx {
+    max-width: 820px;
+    margin: 12px auto 0;
+
+    font-size: 12px;
+    color: #666;
+    text-align: center;
+}
+
+
+/* ==================================================
+   ESTRUTURA PRINCIPAL
+   ================================================== */
+
+/* Área central onde são apresentadas as páginas. */
+main {
+    max-width: 820px;
+    margin: 14px auto 40px;
+}
+
+/* Folha individual da proposta. */
+.sheet {
+    background: #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
+
+    padding: 56px 64px;
+    margin-bottom: 22px;
+
+    line-height: 1.45;
+    font-size: 14.5px;
+}
+
+
+/* ==================================================
+   CAPA DA PROPOSTA
+   ================================================== */
+
+/* Estrutura e alinhamento da capa. */
+.cover {
+    min-height: 420px;
+    border-top: 10px solid #e75b21;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* Título principal da capa. */
+.cover h1 {
+    margin: 0 0 4px;
+
+    font-size: 30px;
+    letter-spacing: 2px;
+}
+
+/* Subtítulo ou identificação do serviço. */
+.cover .tag {
+    margin-bottom: 34px;
+
+    color: #e75b21;
+    font-weight: bold;
+    letter-spacing: 3px;
+    font-size: 12px;
+}
+
+/* Grelha dos campos de identificação do cliente. */
+.cover dl {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 10px 14px;
+
+    margin: 0;
+    font-size: 15px;
+}
+
+/* Rótulos dos campos da capa. */
+.cover dt {
+    padding-top: 3px;
+
+    color: #777;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Valores dos campos da capa. */
+.cover dd {
+    margin: 0;
+    font-weight: bold;
+}
+
+
+/* ==================================================
+   TEXTO E TÍTULOS
+   ================================================== */
+
+/* Parágrafos do documento. */
+.sheet p {
+    margin: 0 0 12px;
+    text-align: justify;
+}
+
+/* Títulos de secção. */
+.sheet h2 {
+    margin: 22px 0 8px;
+
+    color: #e75b21;
+    font-size: 18px;
+}
+
+/* Subtítulos de secção. */
+.sheet h3 {
+    margin: 16px 0 6px;
+
+    color: #e75b21;
+    font-size: 15px;
+}
+
+
+/* ==================================================
+   LISTAS
+   ================================================== */
+
+/* Lista principal. */
+.sheet ul {
+    margin: 0 0 12px;
+    padding-left: 24px;
+}
+
+/* Espaçamento entre os elementos da lista. */
+.sheet li {
+    margin: 0 0 2px;
+}
+
+
+/* ==================================================
+   TABELAS DE SERVIÇOS
+   ================================================== */
+
+/* Estrutura geral das tabelas. */
+.sheet table {
+    width: 100%;
+    margin: 12px 0 18px;
+
+    border-collapse: collapse;
+    table-layout: fixed;
+
+    font-size: 13px;
+}
+
+/* Células das tabelas. */
+.sheet td {
+    border: 1px solid #fff;
+    padding: 5px 7px;
+    vertical-align: top;
+}
+
+/* Remove margens internas dos elementos nas células. */
+.sheet td div {
+    margin: 0;
+}
+
+/* Alinhamento dos subpontos dentro das células. */
+.sheet td .li {
+    padding-left: 14px;
+    text-indent: -14px;
+}
+
+/* Centralização horizontal e vertical das células. */
+.sheet td.c {
+    text-align: center !important;
+    vertical-align: middle !important;
+}
+
+/* Alinhamento vertical ao centro. */
+.sheet td.m {
+    vertical-align: middle;
+}
+
+
+/* ==================================================
+   NOTAS ADICIONAIS
+   ================================================== */
+
+/* Estilo para notas em itálico. */
+.note-i {
+    font-style: italic;
+}
+
+/* Notas externas à tabela, apresentadas abaixo dos serviços. */
+.sheet p.external-note {
+    margin: 3px 0 8px;
+
+    font-size: 10pt;
+    line-height: 1.25;
+    text-align: justify;
+}
+
+
+/* ==================================================
+   IMPRESSÃO
+   ================================================== */
+
+@media print {
+
+    /* Remove o fundo cinzento na impressão. */
+    body {
+        background: #fff;
+    }
+
+    /* Ajusta a barra superior para impressão. */
+    .bar {
+        position: static;
+        padding: 0 0 8px;
+        border-bottom: 1px solid #ddd;
+    }
+
+    /* Oculta elementos que não devem aparecer no documento impresso. */
+    .live,
+    .warn,
+    .approx {
+        display: none !important;
+    }
+
+    /* Remove as limitações de largura da página. */
+    main {
+        max-width: none;
+        margin: 0;
+    }
+
+    /* Ajusta cada folha para impressão. */
+    .sheet {
+        box-shadow: none;
+        margin: 0;
+        padding: 20mm 18mm;
+        page-break-after: always;
+    }
+
+    /* Evita uma página em branco depois da última folha. */
+    .sheet:last-child {
+        page-break-after: auto;
+    }
+}
