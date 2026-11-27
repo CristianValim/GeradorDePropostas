@@ -1182,134 +1182,74 @@ function parseDuaText(text) {
         .map(line => line.replace(/\s+/g, " ").trim())
         .filter(Boolean);
 
-    const clean = value => String(value || "")
-        .replace(/^[\s:：\-–|]+/, "")
-        .replace(/\s+/g, " ")
-        .trim();
+    function getFieldValue(pattern) {
+        for (const line of lines) {
+            const match = line.match(pattern);
 
-    function isFieldCode(line) {
-        return /^\s*(?:[A-Z]\s*[.)]?\s*|D\s*[.]?\s*[123]\s*[.)]?)\s*(?:[:：\-–]|\s)/i.test(line);
-    }
-
-    function readField(code, labels = []) {
-        const escapedCode = code.replace(".", "\\.");
-
-        const regex = new RegExp(
-            "^\\\\s*" + escapedCode +
-            "\\\\s*(?:[:：.\\\\-–)]\\\\s*)?(.*)$",
-            "i"
-        );
-
-        for (let i = 0; i < lines.length; i++) {
-            const match = lines[i].match(regex);
-
-            if (!match) continue;
-
-            let value = clean(match[1]);
-
-            // Remover a designação do campo, caso apareça na mesma linha.
-            if (labels.length) {
-                const labelRegex = new RegExp(
-                    "^(?:" + labels.join("|") + ")\\\\s*[:：\\\\-–]?\\\\s*",
-                    "i"
-                );
-
-                value = value.replace(labelRegex, "").trim();
-            }
-
-            if (value) {
-                return value;
-            }
-
-            // Alguns DUA apresentam o valor na linha seguinte.
-            for (
-                let j = i + 1;
-                j < Math.min(i + 3, lines.length);
-                j++
-            ) {
-                const next = clean(lines[j]);
-
-                if (!next || isFieldCode(next)) break;
-
-                const isOnlyLabel = labels.some(label =>
-                    new RegExp("^" + label + "$", "i").test(next)
-                );
-
-                if (isOnlyLabel) continue;
-
-                return next;
+            if (match && match[1]) {
+                return match[1]
+                    .replace(/\s*[|¦].*$/, "")
+                    .replace(/\s+/g, " ")
+                    .trim();
             }
         }
 
         return "";
     }
 
-    function normalizePlate(value) {
-        const compact = String(value || "")
+    // A — Matrícula
+    const rawPlate = getFieldValue(
+        /^\s*A\b\s*[:：\-–]?\s*(.+)$/i
+    );
+
+    // Procurar a matrícula no texto do item A.
+    // Aceita os formatos portugueses com letras e números.
+    const plateMatch = rawPlate.match(
+        /\b(?:\d{2}[- ]?[A-Z]{2}[- ]?\d{2}|[A-Z]{2}[- ]?\d{2}[- ]?[A-Z]{2}|\d{2}[- ]?[A-Z]{2}[- ]?[A-Z]{2})\b/i
+    );
+
+    const matricula = plateMatch
+        ? plateMatch[0]
             .toUpperCase()
-            .replace(/[^A-Z0-9]/g, "");
+            .replace(/[^A-Z0-9]/g, "")
+            .match(/.{1,2}/g)
+            .join("-")
+        : "";
 
-        if (compact.length !== 6) return "";
-
-        if (!/[A-Z]/.test(compact) || !/\d/.test(compact)) {
-            return "";
-        }
-
-        return [
-            compact.slice(0, 2),
-            compact.slice(2, 4),
-            compact.slice(4, 6)
-        ].join("-");
-    }
-
-    function extractYear(value) {
-        const match = String(value || "").match(
-            /\b(?:\d{1,2}[\/.-]\d{1,2}[\/.-])?((?:19|20)\d{2})\b/
-        );
-
-        return match ? match[1] : "";
-    }
-
-    const rawPlate = readField(
-        "A",
-        ["matr[ií]cula", "registration"]
+    // B — Data da primeira matrícula
+    const rawDate = getFieldValue(
+        /^\s*B\b\s*[:：\-–]?\s*(.+)$/i
     );
 
-    const rawDate = readField(
-        "B",
-        ["data da primeira matr[ií]cula", "data da matr[ií]cula"]
+    const yearMatch = rawDate.match(
+        /(?:19|20)\d{2}/
     );
 
-    const brand = readField(
-        "D.1",
-        ["marca", "make"]
+    // D.1 — Marca
+    const marca = getFieldValue(
+        /^\s*D\s*[.]?\s*1\b\s*[:：\-–]?\s*(.+)$/i
     );
 
-    let model = readField(
-        "D.3",
-        ["designa[cç][aã]o comercial", "modelo"]
+    // D.3 — Designação comercial / modelo
+    // Não utilizar D.2 como alternativa.
+    const modelo = getFieldValue(
+        /^\s*D\s*[.]?\s*3\b\s*[:：\-–]?\s*(.+)$/i
     );
 
-    if (!model) {
-        model = readField(
-            "D.2",
-            ["tipo", "variante", "vers[aã]o"]
-        );
-    }
-
-    const color = readField(
-        "R",
-        ["cor", "colour", "color"]
+    // R — Cor
+    const cor = getFieldValue(
+        /^\s*R\b\s*[:：\-–]?\s*(.+)$/i
     );
 
     return {
-        matricula: normalizePlate(rawPlate),
-        marca: brand,
-        modelo: model,
-        ano: extractYear(rawDate),
-        cor: color
+        matricula,
+        marca,
+        modelo,
+        ano: yearMatch ? yearMatch[0] : "",
+        cor
     };
 }
+
 
 
 /* ------------------------------------------------------------
