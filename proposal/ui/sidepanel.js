@@ -1104,8 +1104,41 @@ function createEmptyVehicle() {
         marca: "",
         modelo: "",
         ano: "",
-        cor: ""
+        cor: "",
+        duaReview: false
     };
+}
+
+/* Normaliza a cor do DUA e conserva apenas a primeira cor. */
+function normalizeVehicleColor(value) {
+    const source = String(value || "")
+        .replace(/[|¦]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!source) return "";
+
+    const firstColor = source
+        .replace(/\s+E\s+OUTRAS?\b[\s\S]*$/i, "")
+        .split(/[;,/]/)[0]
+        .trim();
+
+    const colorRules = [
+        [/\bBRANCO\b/i, "Branco"], [/\bPRETO\b/i, "Preto"],
+        [/\bCINZENTO\b|\bCINZA\b/i, "Cinzento"],
+        [/\bPRATA\b/i, "Prata"], [/\bAZUL\b/i, "Azul"],
+        [/\bVERMELHO\b/i, "Vermelho"], [/\bVERDE\b/i, "Verde"],
+        [/\bAMARELO\b/i, "Amarelo"], [/\bBEGE\b/i, "Bege"],
+        [/\bCASTANHO\b|\bCASTANHA\b/i, "Castanho"],
+        [/\bLARANJA\b/i, "Laranja"], [/\bDOURADO\b/i, "Dourado"],
+        [/\bBORDEAUX\b/i, "Bordeaux"], [/\bROXO\b/i, "Roxo"]
+    ];
+
+    for (const [pattern, canonical] of colorRules) {
+        if (pattern.test(firstColor)) return canonical;
+    }
+
+    return firstColor;
 }
 
 
@@ -1133,7 +1166,8 @@ async function saveContractData() {
         marca: vehicle.marca || "",
         modelo: vehicle.modelo || "",
         ano: vehicle.ano || "",
-        cor: vehicle.cor || ""
+        cor: vehicle.cor || "",
+        duaReview: Boolean(vehicle.duaReview)
     }));
 
     await chrome.storage.local.set({ contractData });
@@ -1144,6 +1178,14 @@ async function saveContractData() {
    ATUALIZAR UM CAMPO DE UMA VIATURA
    ------------------------------------------------------------ */
 
+function isValidPortuguesePlate(value) {
+    const compact = String(value || "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+
+    return /^(?:\d{2}[A-Z]{2}\d{2}|[A-Z]{2}\d{2}[A-Z]{2}|\d{2}[A-Z]{2}\d{2}|[A-Z]{2}\d{4}|\d{4}[A-Z]{2})$/.test(compact);
+}
+
 function updateVehicleField(vehicleId, field, value) {
     const vehicle = contractVehicles.find(
         item => item.id === vehicleId
@@ -1151,7 +1193,13 @@ function updateVehicleField(vehicleId, field, value) {
 
     if (!vehicle) return;
 
-    vehicle[field] = value;
+    vehicle[field] = field === "cor"
+        ? normalizeVehicleColor(value)
+        : value;
+
+    if (field === "matricula" && isValidPortuguesePlate(value)) {
+        vehicle.duaReview = false;
+    }
 
     saveContractData().catch(error => {
         console.error(
@@ -1175,71 +1223,128 @@ function updateVehicleField(vehicleId, field, value) {
    ------------------------------------------------------------ */
 
 function parseDuaText(text) {
-    const lines = String(text || "")
+    const source = String(text || "")
         .replace(/\u0000/g, "")
         .replace(/\r\n?/g, "\n")
-        .split("\n")
-        .map(line => line.replace(/\s+/g, " ").trim())
+        .replace(/\u00a0/g, " ");
+
+    const lines = source.split("\n")
+        .map(line => line.replace(/[\t ]+/g, " ").trim())
         .filter(Boolean);
 
-    function getFieldValue(pattern) {
+    const findLineValue = (codeRegex) => {
         for (const line of lines) {
-            const match = line.match(pattern);
-
-            if (match && match[1]) {
-                return match[1]
-                    .replace(/\s*[|¦].*$/, "")
-                    .replace(/\s+/g, " ")
-                    .trim();
-            }
+            const match = line.match(codeRegex);
+            if (match && match[1]) return match[1].trim();
         }
-
         return "";
-    }
+    };
 
-    // A — Matrícula
-    const rawPlate = getFieldValue(
-        /^\s*A\b\s*[:：\-–]?\s*(.+)$/i
+    // Matrícula: aceitar apenas os formatos portugueses conhecidos.
+    const plateSource = findLineValue(/^A\s*[.:)\-–]?\s*(.*)$/i) ||
+        (source.match(/(?:^|\s)A\s+((?:\d{2}\s*[- ]?\s*[A-Z]{2}\s*[- ]?\s*\d{2}|[A-Z]{2}\s*[- ]?\s*\d{2}\s*[- ]?\s*[A-Z]{2}))(?:\s|$)/im)?.[1] || "");
+    const plateMatch = String(plateSource).toUpperCase().match(
+        /\b(?:\d{2}\s*[- ]?\s*[A-Z]{2}\s*[- ]?\s*\d{2}|[A-Z]{2}\s*[- ]?\s*\d{2}\s*[- ]?\s*[A-Z]{2})\b/
     );
-
-    // Procurar a matrícula no texto do item A.
-    // Aceita os formatos portugueses com letras e números.
-    const plateMatch = rawPlate.match(
-        /\b(?:\d{2}[- ]?[A-Z]{2}[- ]?\d{2}|[A-Z]{2}[- ]?\d{2}[- ]?[A-Z]{2}|\d{2}[- ]?[A-Z]{2}[- ]?[A-Z]{2})\b/i
-    );
-
-    const matricula = plateMatch
-        ? plateMatch[0]
-            .toUpperCase()
-            .replace(/[^A-Z0-9]/g, "")
-            .match(/.{1,2}/g)
-            .join("-")
+    const compactPlate = plateMatch
+        ? plateMatch[0].replace(/[^A-Z0-9]/g, "")
+        : "";
+    const matricula = compactPlate
+        ? compactPlate.match(/.{1,2}/g).join("-")
         : "";
 
-    // B — Data da primeira matrícula
-    const rawDate = getFieldValue(
-        /^\s*B\b\s*[:：\-–]?\s*(.+)$/i
-    );
+    // B: data da primeira matrícula. Só aproveita um ano válido.
+    const dateValue = findLineValue(/^B\s*[.:)\-–]?\s*(.*)$/i) ||
+        (source.match(/(?:^|\s)B\s+(.{1,24}?)(?=\s+(?:C|D\s*[.]?\s*1|I)\b|$)/im)?.[1] || "");
+    const yearMatch = String(dateValue).match(/\b(?:19|20)\d{2}\b/);
 
-    const yearMatch = rawDate.match(
-        /(?:19|20)\d{2}/
-    );
+    // D.1: só aceitar marcas reconhecidas; não guardar o resto do OCR.
+    const makeValue = findLineValue(/^D\s*[.]?\s*1\s*[:.)\-–]?\s*(.*)$/i) ||
+        (source.match(/(?:^|\s)D\s*[.]?\s*1\s+(.{1,45}?)(?=\s+D\s*[.]?\s*[23]\b|\s+E\b|\s+F[.]|$)/im)?.[1] || "");
+    const makeRules = [
+        [/\bRENAULT\s+TRUCKS?\b/i, "RENAULT TRUCKS"],
+        [/\bRENAULT\b/i, "RENAULT"],
+        [/\bSCANIA\b/i, "SCANIA"],
+        [/\bMERCEDES(?:[- ]BENZ)?\b/i, "MERCEDES-BENZ"],
+        [/\bVOLVO\b/i, "VOLVO"], [/\bDAF\b/i, "DAF"],
+        [/\bIVECO\b/i, "IVECO"], [/\bMAN\b/i, "MAN"],
+        [/\bFORD\b/i, "FORD"], [/\bPEUGEOT\b/i, "PEUGEOT"],
+        [/\bCITRO[EË]N\b/i, "CITROËN"], [/\bFIAT\b/i, "FIAT"],
+        [/\bTOYOTA\b/i, "TOYOTA"], [/\bOPEL\b/i, "OPEL"],
+        [/\bNISSAN\b/i, "NISSAN"], [/\bMITSUBISHI\b/i, "MITSUBISHI"],
+        [/\bISUZU\b/i, "ISUZU"], [/\bHONDA\b/i, "HONDA"],
+        [/\bKIA\b/i, "KIA"], [/\bHYUNDAI\b/i, "HYUNDAI"],
+        [/\bSKODA\b/i, "SKODA"], [/\bSEAT\b/i, "SEAT"],
+        [/\bVOLKSWAGEN\b|\bVW\b/i, "VOLKSWAGEN"],
+        [/\bBMW\b/i, "BMW"], [/\bAUDI\b/i, "AUDI"],
+        [/\bDACIA\b/i, "DACIA"]
+    ];
+    let marca = "";
+    for (const [pattern, canonical] of makeRules) {
+        if (pattern.test(makeValue)) {
+            marca = canonical;
+            break;
+        }
+    }
 
-    // D.1 — Marca
-    const marca = getFieldValue(
-        /^\s*D\s*[.]?\s*1\b\s*[:：\-–]?\s*(.+)$/i
-    );
+    // D.3: conservar apenas um valor curto e limpo do campo de modelo.
+    let modelo = findLineValue(/^D\s*[.]?\s*3\s*[:.)\-–]?\s*(.*)$/i);
+    if (!modelo) {
+        modelo = source.match(/(?:^|\s)D\s*[.]?\s*3\s+(.{1,45}?)(?=\s+(?:E\b|F[.]|G\b|H\b|J[.]|K\b|R\b)|$)/im)?.[1] || "";
+    }
+    modelo = String(modelo)
+        .replace(/\s+(?:E\b|F[.]|G\b|H\b|J[.]|K\b|R\b)[\s\S]*$/i, "")
+        .replace(/[|¦].*$/, "")
+        .replace(/[^A-Z0-9À-Ý .\-/]/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const modelTokens = modelo.split(/\s+/).filter(Boolean);
+    const knownWordModels = new Set([
+        "CLIO", "MEGANE", "CAPTUR", "KADJAR", "KANGOO", "MASTER", "TRAFIC",
+        "KADJAR", "SCENIC", "TWINGO", "CORSA", "ASTRA", "COMBO", "VIVARO",
+        "DUCATO", "DOBLO", "PANDA", "PUNTO", "TRANSIT", "RANGER", "FIESTA",
+        "FOCUS", "CIVIC", "ACCORD", "HILUX", "LANDCRUISER", "YARIS", "COROLLA",
+        "SPRINTER", "ATEGO", "ACTROS", "AROCS", "ANTOS", "FH", "FM", "FL",
+        "RANGE", "DISCOVERY", "DEFENDER", "TIGUAN", "GOLF", "PASSAT", "CADDY"
+    ]);
+    const modelHasNumber = /\d/.test(modelo);
+    const modelIsKnownWord = knownWordModels.has(modelo.toUpperCase());
+    // Alguns modelos comerciais são identificados por um único carácter (ex.: T ou 7).
+    const modelIsKnownSingle = new Set(["T", "7"]).has(modelo.toUpperCase());
+    if (
+        modelo.length > 35 ||
+        (modelo.length < 2 && !modelIsKnownSingle) ||
+        modelTokens.length > 3 ||
+        (!/[A-ZÀ-Ý]/i.test(modelo) && !modelIsKnownSingle) ||
+        (!modelHasNumber && !modelIsKnownWord && !modelIsKnownSingle)
+    ) {
+        modelo = "";
+    }
 
-    // D.3 — Designação comercial / modelo
-    // Não utilizar D.2 como alternativa.
-    const modelo = getFieldValue(
-        /^\s*D\s*[.]?\s*3\b\s*[:：\-–]?\s*(.+)$/i
-    );
-
-    // R — Cor
-    const cor = getFieldValue(
-        /^\s*R\b\s*[:：\-–]?\s*(.+)$/i
-    );
+    // R: cor. Só aceitar nomes de cores comuns, evitando texto de rodapé.
+    const colorValueRaw = findLineValue(/^R\s*[:.)\-–]?\s*(.*)$/i) ||
+        (source.match(/(?:^|\s)R\s+(.{1,35}?)(?=\s+(?:Z[.]|X[.]|U[.]|V[.]|W[.]|Y[.])|$)/im)?.[1] || "");
+    const colorValue = String(colorValueRaw)
+        .replace(/\s+E\s+OUTRAS?\b[\s\S]*$/i, "")
+        .split(/[;,/]/)[0]
+        .trim();
+    const colorRules = [
+        [/\bBRANCO\b/i, "Branco"], [/\bPRETO\b/i, "Preto"],
+        [/\bCINZENTO\b|\bCINZA\b/i, "Cinzento"],
+        [/\bPRATA\b/i, "Prata"], [/\bAZUL\b/i, "Azul"],
+        [/\bVERMELHO\b/i, "Vermelho"], [/\bVERDE\b/i, "Verde"],
+        [/\bAMARELO\b/i, "Amarelo"], [/\bBEGE\b/i, "Bege"],
+        [/\bCASTANHO\b|\bCASTANHA\b/i, "Castanho"],
+        [/\bLARANJA\b/i, "Laranja"], [/\bDOURADO\b/i, "Dourado"],
+        [/\bBORDEAUX\b/i, "Bordeaux"], [/\bROXO\b/i, "Roxo"]
+    ];
+    let cor = "";
+    for (const [pattern, canonical] of colorRules) {
+        if (pattern.test(colorValue)) {
+            cor = canonical;
+            break;
+        }
+    }
 
     return {
         matricula,
@@ -1250,107 +1355,205 @@ function parseDuaText(text) {
     };
 }
 
-
-
 /* ------------------------------------------------------------
-   IMPORTAR DUA PARA UMA VIATURA ESPECÍFICA
+   RECEBER DUA DO IMPORTADOR GERAL
+
+   O document-ai.js envia o texto através do evento
+   ct:dua-extracted. Este módulo aplica os dados à frota.
    ------------------------------------------------------------ */
 
-async function importVehicleDua(vehicleId, file, statusElement, button) {
-    if (!file) return;
+function normalizeVehiclePlate(value) {
+    return String(value || "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+}
 
-    if (!file.type.startsWith("image/")) {
-        statusElement.textContent =
-            "Seleciona uma fotografia válida do DUA.";
+function handleDuaExtracted(event) {
+    const detail = event.detail || {};
+    const text = String(detail.text || "").trim();
+    const status = $("aiDocumentStatus");
 
-        statusElement.dataset.state = "error";
-        return;
-    }
-
-    if (file.size > 25 * 1024 * 1024) {
-        statusElement.textContent =
-            "A fotografia excede o limite de 25 MB.";
-
-        statusElement.dataset.state = "error";
-        return;
-    }
-
-    if (!root.CTDocumentAI?.recognizeImageText) {
-        statusElement.textContent =
-            "O módulo OCR não está disponível. Verifica o carregamento do Tesseract.";
-
-        statusElement.dataset.state = "error";
-        return;
-    }
-
-    button.disabled = true;
-    button.textContent = "A ler DUA...";
-
-    statusElement.textContent =
-        "A preparar o reconhecimento local...";
+    if (!text) return;
 
     try {
-        const text = await root.CTDocumentAI.recognizeImageText(
-            file,
-            progress => {
-                statusElement.textContent = progress;
-            }
-        );
-
         const candidates = parseDuaText(text);
+        const hasValidPlate = Boolean(candidates.matricula);
 
-        const vehicle = contractVehicles.find(
-            item => item.id === vehicleId
-        );
+        let vehicle = null;
+        let created = false;
+
+        if (hasValidPlate) {
+            const normalizedPlate = normalizeVehiclePlate(
+                candidates.matricula
+            );
+
+            vehicle = contractVehicles.find(item =>
+                normalizeVehiclePlate(item.matricula) === normalizedPlate
+            );
+        } else {
+            // Procura uma viatura provisória criada anteriormente.
+            vehicle = contractVehicles.find(item =>
+                item.duaReview === true && !item.matricula
+            );
+        }
 
         if (!vehicle) {
-            throw new Error(
-                "A viatura selecionada já não existe."
-            );
+            vehicle = createEmptyVehicle();
+            contractVehicles.push(vehicle);
+            created = true;
         }
 
         let applied = 0;
 
-        Object.keys(candidates).forEach(field => {
-            const value = candidates[field];
+        if (hasValidPlate) {
+            vehicle.matricula = candidates.matricula;
+            vehicle.duaReview = false;
+        } else {
+            vehicle.matricula = "";
+            vehicle.duaReview = true;
+        }
 
-            if (!value) return;
+        for (const field of ["marca", "modelo", "ano", "cor"]) {
+            const value = field === "cor"
+                ? normalizeVehicleColor(candidates[field])
+                : candidates[field];
+
+            if (!value) continue;
 
             vehicle[field] = value;
             applied++;
+        }
+
+        renderContractVehicles();
+
+        saveContractData().then(() => {
+            if (status) {
+                if (!hasValidPlate) {
+                    status.textContent =
+                        `${created ? "Viatura provisória criada" : "Viatura provisória atualizada"}. ` +
+                        `${applied} outro(s) campo(s) preenchido(s). ` +
+                        "A matrícula não foi validada. Confirma-a manualmente no DUA.";
+
+                    status.dataset.state = "error";
+                } else {
+                    const action = created
+                        ? "Nova viatura adicionada"
+                        : "Viatura existente atualizada";
+
+                    const fieldsText = applied
+                        ? `${applied} outro(s) campo(s) preenchido(s)`
+                        : "apenas a matrícula foi validada";
+
+                    status.textContent =
+                        `${action}: ${candidates.matricula} — ${fieldsText}.`;
+
+                    status.dataset.state = "success";
+                }
+            }
+
+            const contractStatus = $("contractStatus");
+
+            if (contractStatus) {
+                contractStatus.textContent = !hasValidPlate
+                    ? "DUA importado para revisão. Confirma e corrige a matrícula da viatura."
+                    : created
+                        ? "DUA importado. A viatura foi adicionada ao contrato."
+                        : "DUA importado. Os dados da viatura existente foram atualizados.";
+            }
+        }).catch(error => {
+            console.error(
+                "[Cartrack DUA] Erro ao guardar viatura:",
+                error
+            );
+
+            if (status) {
+                status.textContent =
+                    "Os dados do DUA foram reconhecidos, mas ocorreu um erro ao guardá-los.";
+
+                status.dataset.state = "error";
+            }
         });
 
-        if (applied > 0) {
-            renderContractVehicles();
-            await saveContractData();
-
-            statusElement.textContent =
-                `${applied} campo(s) identificado(s). Confirma os dados da viatura.`;
-
-            statusElement.dataset.state = "success";
-
-        } else {
-            statusElement.textContent =
-                "A fotografia foi lida, mas não foram identificados campos do DUA.";
-
-            statusElement.dataset.state = "error";
-        }
+        console.log(
+            "[Cartrack DUA] Campos extraídos:",
+            candidates,
+            "Matrícula validada:",
+            hasValidPlate
+        );
 
     } catch (error) {
         console.error(
-            "[Cartrack DUA] Erro na leitura:",
+            "[Cartrack DUA] Erro ao aplicar os dados:",
             error
         );
 
-        statusElement.textContent =
-            error.message || "Não foi possível ler o DUA.";
+        if (status) {
+            status.textContent =
+                `O DUA foi reconhecido, mas não foi possível aplicar os dados: ${error.message}`;
 
-        statusElement.dataset.state = "error";
-
-    } finally {
-        button.disabled = false;
-        button.textContent = "Importar fotografia do DUA";
+            status.dataset.state = "error";
+        }
     }
+}
+// Ligação em falta: o document-ai.js emite este evento após reconhecer um DUA.
+window.addEventListener("ct:dua-extracted", handleDuaExtracted);
+
+
+/* ------------------------------------------------------------
+   AVISOS DE VALIDAÇÃO DOS CAMPOS DA VIATURA
+   ------------------------------------------------------------ */
+
+function getVehicleFieldWarning(field, value, isProvisional = false) {
+    const current = String(value || "").trim();
+
+    if (field === "matricula") {
+        if (!current) {
+            return isProvisional
+                ? "A matrícula não foi reconhecida pelo OCR. Confirme o campo A do DUA e introduza-a manualmente."
+                : "Matrícula por preencher. Confirme-a no DUA antes de concluir o contrato.";
+        }
+
+        if (!isValidPortuguesePlate(current)) {
+            return "A matrícula pode estar incorreta. Confirme os caracteres e o formato no DUA.";
+        }
+
+        return "Confirme a matrícula no DUA: o OCR pode confundir, por exemplo, O/0 e I/1.";
+    }
+
+    if (field === "modelo") {
+        if (!current) {
+            return "Modelo não identificado no DUA. Confirme o campo D.3 e preencha-o manualmente.";
+        }
+
+        if (
+            current.length > 35 ||
+            !/^[A-Z0-9À-Ý][A-Z0-9À-Ý .\-/]{0,34}$/i.test(current)
+        ) {
+            return "O modelo reconhecido pode estar incorreto. Confirme-o no campo D.3 do DUA.";
+        }
+
+        return "Confirme se o modelo corresponde exatamente ao campo D.3 do DUA.";
+    }
+
+    return "";
+}
+
+function updateVehicleFieldWarning(
+    field,
+    value,
+    warning,
+    isProvisional = false
+) {
+    if (!warning) return;
+
+    const message = getVehicleFieldWarning(
+        field,
+        value,
+        isProvisional
+    );
+
+    warning.textContent = message;
+    warning.hidden = !message;
 }
 
 
@@ -1398,8 +1601,8 @@ function renderContractVehicles() {
         const remove = document.createElement("button");
 
         remove.type = "button";
-        remove.className = "secondary";
-        remove.textContent = "Remover";
+        remove.className = "vehicle-remove";
+        remove.textContent = "Remover viatura";
 
         remove.addEventListener("click", async () => {
             contractVehicles = contractVehicles.filter(
@@ -1410,7 +1613,7 @@ function renderContractVehicles() {
             await saveContractData();
         });
 
-        header.append(title, remove);
+        header.append(title);
         card.appendChild(header);
 
         definitions.forEach(([field, labelText, placeholder]) => {
@@ -1422,9 +1625,26 @@ function renderContractVehicles() {
 
             input.type = "text";
             input.placeholder = placeholder;
-            input.value = vehicle[field] || "";
+            input.value = field === "cor"
+                ? normalizeVehicleColor(vehicle[field])
+                : (vehicle[field] || "");
 
             input.autocomplete = "off";
+
+            label.appendChild(input);
+
+            let warning = null;
+            if (field === "matricula" || field === "modelo") {
+                warning = document.createElement("small");
+                warning.className = "vehicle-field-warning";
+                warning.setAttribute("role", "status");
+                label.appendChild(warning);
+                updateVehicleFieldWarning(
+                    field,
+                    input.value,
+                    warning,
+                    Boolean(vehicle.duaReview)
+                );            }
 
             input.addEventListener("input", () => {
                 updateVehicleField(
@@ -1432,70 +1652,26 @@ function renderContractVehicles() {
                     field,
                     input.value
                 );
+
+                updateVehicleFieldWarning(
+                    field,
+                    input.value,
+                    warning,
+                    Boolean(vehicle.duaReview)
+                );
             });
 
-            label.appendChild(input);
+            if (field === "cor") {
+                input.addEventListener("change", () => {
+                    input.value = normalizeVehicleColor(input.value);
+                    updateVehicleField(vehicle.id, field, input.value);
+                });
+            }
+
             card.appendChild(label);
         });
 
-        // Importação individual da fotografia do DUA.
-        const importTitle = document.createElement("h4");
-
-        importTitle.textContent = "Importar DUA";
-        card.appendChild(importTitle);
-
-        const fileInput = document.createElement("input");
-
-        fileInput.type = "file";
-        fileInput.accept = "image/*";
-        fileInput.setAttribute(
-            "aria-label",
-            `Fotografia do DUA da viatura ${index + 1}`
-        );
-
-        const importButton = document.createElement("button");
-
-        importButton.type = "button";
-        importButton.className = "secondary";
-        importButton.textContent = "Importar fotografia do DUA";
-
-        importButton.disabled = true;
-
-        const duaStatus = document.createElement("div");
-
-        duaStatus.className = "status";
-        duaStatus.setAttribute("role", "status");
-        duaStatus.setAttribute("aria-live", "polite");
-        duaStatus.textContent =
-            "Seleciona uma fotografia do DUA.";
-
-        fileInput.addEventListener("change", () => {
-            const file = fileInput.files?.[0];
-
-            importButton.disabled = !file;
-
-            duaStatus.textContent = file
-                ? `Fotografia selecionada: ${file.name}`
-                : "Seleciona uma fotografia do DUA.";
-        });
-
-        importButton.addEventListener("click", async () => {
-            const file = fileInput.files?.[0];
-
-            await importVehicleDua(
-                vehicle.id,
-                file,
-                duaStatus,
-                importButton
-            );
-        });
-
-        card.append(
-            fileInput,
-            importButton,
-            duaStatus
-        );
-
+        card.appendChild(remove);
         host.appendChild(card);
     });
 }
@@ -1548,7 +1724,8 @@ async function restoreContractData() {
             marca: vehicle.marca || "",
             modelo: vehicle.modelo || "",
             ano: vehicle.ano || "",
-            cor: vehicle.cor || ""
+            cor: normalizeVehicleColor(vehicle.cor || ""),
+            duaReview: Boolean(vehicle.duaReview)
         }))
         : [];
 

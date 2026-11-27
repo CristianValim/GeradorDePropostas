@@ -400,31 +400,29 @@
 
 <section class="panel document-ai-panel">
 
-    <h2>Importar dados de um documento</h2>
+    <h2>Importar documentos do cliente</h2>
 
     <p class="small">
-        Seleciona um PDF, imagem ou documento Word.
+        Seleciona todos os ficheiros de uma só vez, incluindo a
+        Certidão Permanente e os DUA das viaturas. São aceites PDFs,
+        documentos Word, ficheiros de texto e fotografias.
         A leitura é processada localmente nesta extensão.
     </p>
 
-    <label for="aiDocumentFile">
-        Documento do cliente
-
+    <label for="aiDocumentFile" class="document-picker">
+        <span class="document-picker-icon" aria-hidden="true">＋</span>
+        <span class="document-picker-title">Selecionar documentos</span>
+        <span class="document-picker-hint">Clica aqui para escolher um ou vários ficheiros</span>
         <input
             id="aiDocumentFile"
+            class="document-picker-input"
             type="file"
-            accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,image/*"
+            multiple
+            accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,image/*"
         >
     </label>
 
-    <button
-        id="aiExtractDocument"
-        class="secondary"
-        type="button"
-        disabled
-    >
-        Extrair texto do documento
-    </button>
+    <div id="aiSelectedFiles" class="selected-files" aria-live="polite"></div>
 
     <div
         id="aiDocumentStatus"
@@ -432,13 +430,13 @@
         role="status"
         aria-live="polite"
     >
-        Seleciona um documento para começar.
+        Seleciona os documentos para começar.
     </div>
 
     <p class="small">
-        Nesta primeira etapa, o sistema apenas extrai e apresenta
-        o texto. A interpretação por IA e o preenchimento dos
-        campos serão acrescentados posteriormente.
+        Da Certidão Permanente serão importados o NIF, nome da empresa,
+        morada, localidade e gerente. De cada DUA serão importados a
+        matrícula, marca, modelo, ano e cor.
     </p>
 
 </section>
@@ -601,9 +599,9 @@
         <h2>Viaturas</h2>
 
         <p class="small">
-            Adiciona as viaturas abrangidas pelo contrato.
-            Podes preencher os dados manualmente ou importar
-            uma fotografia do Documento Único Automóvel (DUA).
+            As viaturas identificadas nos DUA carregados acima
+            serão adicionadas automaticamente. Também podes
+            preencher ou corrigir os dados manualmente.
         </p>
 
         <div id="contractVehicles"></div>

@@ -410,3 +410,186 @@ label.check input {
     color: #666;
     overflow-wrap: anywhere;
 }
+
+
+/* ============================================================
+   SELEÇÃO DE DOCUMENTOS
+   ============================================================ */
+.document-picker {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 132px;
+    margin: 14px 0 8px;
+    padding: 18px 12px;
+    border: 2px dashed #f0a477;
+    border-radius: 10px;
+    background: #fff8f3;
+    text-align: center;
+    cursor: pointer;
+    transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.document-picker:hover {
+    background: #fff0e5;
+    border-color: #f47735;
+    box-shadow: 0 2px 8px rgba(244, 119, 53, .12);
+}
+.document-picker:focus-within {
+    outline: 2px solid #f47735;
+    outline-offset: 2px;
+}
+.document-picker-icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #f47735;
+    color: #fff;
+    font-size: 24px;
+    font-weight: 400;
+    line-height: 1;
+}
+.document-picker-title {
+    color: #333;
+    font-size: 13px;
+    font-weight: 700;
+}
+.document-picker-hint {
+    color: #777;
+    font-size: 11px;
+    font-weight: 400;
+}
+.document-picker-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+.selected-files {
+    margin: 8px 0 12px;
+    color: #555;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.selected-files:empty { display: none; }
+
+/* ============================================================
+   CARTÕES DAS VIATURAS
+   ============================================================ */
+.vehicle-card {
+    padding: 12px 0 16px;
+    margin: 0;
+    border-bottom: 1px solid #d9dce0;
+}
+.vehicle-card:last-child {
+    border-bottom: 0;
+    padding-bottom: 4px;
+}
+.vehicle-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.vehicle-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 14px;
+}
+
+.vehicle-field-warning {
+    display: block;
+    margin: 5px 0 2px;
+    color: #9a5b08;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.4;
+}
+.vehicle-field-warning[hidden] {
+    display: none;
+}
+.vehicle-remove {
+    width: auto;
+    min-width: 105px;
+    margin: 10px 0 0 auto;
+    padding: 8px 12px;
+    background: #f1f2f3;
+    color: #a33;
+    border: 1px solid #e0e0e0;
+}
+.vehicle-remove:hover {
+    background: #fcebea;
+}
+
+/* ============================================================
+   CAMPOS E AVISOS DAS VIATURAS
+   ============================================================ */
+
+.vehicle-card {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.vehicle-card label {
+    display: block;
+    width: 100%;
+    margin: 12px 0 8px;
+    color: #333;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.vehicle-card input {
+    display: block;
+    width: 100%;
+    min-height: 38px;
+    margin: 6px 0 0;
+    padding: 9px 10px;
+    border: 1px solid #c9cdd1;
+    border-radius: 6px;
+    background: #fff;
+    color: #242424;
+    font-size: 13px;
+}
+
+.vehicle-card input:focus {
+    outline: 2px solid #f47735;
+    border-color: #f47735;
+}
+
+.vehicle-card .vehicle-field-warning {
+    display: block;
+    margin: 6px 0 4px;
+    padding: 7px 9px;
+    border-left: 3px solid #d99532;
+    border-radius: 3px;
+    background: #fff8eb;
+    color: #80520c;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+.vehicle-card .vehicle-field-warning[hidden] {
+    display: none !important;
+}
+
+.vehicle-header {
+    margin-bottom: 10px;
+}
+
+.vehicle-remove {
+    align-self: flex-end;
+    margin-top: 12px;
+}

@@ -71,26 +71,6 @@
             key: "locality",
             id: "contractLocality",
             label: "Localidade"
-        },
-        {
-            key: "parish",
-            id: "contractParish",
-            label: "Freguesia"
-        },
-        {
-            key: "municipality",
-            id: "contractMunicipality",
-            label: "Concelho"
-        },
-        {
-            key: "district",
-            id: "contractDistrict",
-            label: "Distrito"
-        },
-        {
-            key: "country",
-            id: "contractCountry",
-            label: "País"
         }
     ];
 
@@ -262,67 +242,42 @@
        ------------------------------------------------------------ */
 
     function extractManager(lines) {
-        const managerSectionRegex =
-            /^(ger[eê]ncia|[óo]rg[aã]os\s+sociais|[óo]rg[aã]o\(s\)\s+designado\(s\))$/i;
+        const normalized = lines.map(line => cleanText(line));
+        const sectionStart = /^(?:ger[eê]ncia|[óo]rg[aã]os\s+sociais|[óo]rg[aã]o\(s\)\s+designado\(s\))\s*[:：]?\s*(.*)$/i;
 
-        for (let i = 0; i < lines.length; i++) {
-            const section = cleanText(lines[i]);
+        for (let i = 0; i < normalized.length; i++) {
+            const sectionMatch = normalized[i].match(sectionStart);
+            if (!sectionMatch) continue;
 
-            if (!managerSectionRegex.test(section)) {
-                continue;
+            const sameLine = sectionMatch[1] || "";
+            const sameLineName = sameLine.match(
+                /(?:Nome(?:\s*\/\s*Firma)?\s*[:：]\s*)(.+?)(?=\s+NIF\/NIPC\s*:|$)/i
+            );
+            if (sameLineName && isPlausiblePersonName(sameLineName[1])) {
+                return { value: cleanText(sameLineName[1]), evidence: normalized[i] };
             }
 
-            // Procurar o nome dentro da secção.
-            for (
-                let j = i + 1;
-                j < Math.min(i + 12, lines.length);
-                j++
-            ) {
-                const line = lines[j];
-
-                // Não atravessar uma nova secção principal.
-                if (
-                    /^(capital|forma de obrigar|objeto|sede|matr[ií]cula|inscri[cç][aã]o|firma)\s*$/i.test(line)
-                ) {
-                    break;
-                }
-
-                const nameMatch = line.match(
-                    /^\s*Nome\s*[:：]\s*(.+?)\s*$/i
-                );
-
-                if (nameMatch) {
-                    const name = cleanText(nameMatch[1]);
-
-                    if (isPlausiblePersonName(name)) {
-                        return {
-                            value: name,
-                            evidence: line
-                        };
-                    }
-                }
-
-                // Algumas certidões apresentam Nome/Firma.
-                const nameFirmaMatch = line.match(
-                    /^\s*Nome\s*\/\s*Firma\s*[:：]\s*(.+?)\s*$/i
-                );
-
-                if (nameFirmaMatch) {
-                    const name = cleanText(nameFirmaMatch[1]);
-
-                    if (isPlausiblePersonName(name)) {
-                        return {
-                            value: name,
-                            evidence: line
-                        };
-                    }
+            for (let j = i + 1; j < Math.min(i + 16, normalized.length); j++) {
+                const line = normalized[j];
+                if (/^(capital|forma de obrigar|objeto|objecto|sede|matr[ií]cula|inscri[cç][aã]o|firma|s[oó]cios e quotas)\s*[:：]?$/i.test(line)) break;
+                const nameMatch = line.match(/^\s*Nome(?:\s*\/\s*Firma)?\s*[:：]\s*(.+?)\s*$/i);
+                if (nameMatch && isPlausiblePersonName(nameMatch[1])) {
+                    return { value: cleanText(nameMatch[1]), evidence: line };
                 }
             }
         }
 
+        // Fallback limitado ao bloco GERÊNCIA; não recolhe nomes aleatórios.
+        const fullText = normalized.join("\n");
+        const block = fullText.match(/GER[ÊE]NCIA\s*[:：]?\s*([\s\S]{0,500})/i);
+        if (block) {
+            const match = block[1].match(/Nome(?:\s*\/\s*Firma)?\s*[:：]\s*([^\r\n]+?)(?=\s+NIF\/NIPC\s*:|$)/i);
+            if (match && isPlausiblePersonName(match[1])) {
+                return { value: cleanText(match[1]), evidence: match[0] };
+            }
+        }
         return null;
     }
-
     function isPlausiblePersonName(value) {
         const name = cleanText(value);
 
